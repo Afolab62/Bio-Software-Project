@@ -1,2 +1,2 @@
-# BioSeqLab-A-Web-Based-Genomic-Analysis-Platform
-BioSeqLab is a web-based bioinformatics analysis platform designed to allow users to upload genomic sequence data and perform a range of standard analyses through an intuitive web interface.
+# Bio-Software-Project
+Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.
