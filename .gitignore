@@ -1,0 +1,34 @@
+# --- Python / venv ---
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# --- Test / tooling caches ---
+.pytest_cache/
+.coverage
+htmlcov/
+.ruff_cache/
+.mypy_cache/
+
+# --- OS / editor junk ---
+.DS_Store
+.vscode/
+.idea/
+
+# --- Environment secrets ---
+.env
+.env.*
+
+# --- Flask instance + local databases ---
+instance/
+*.sqlite
+*.sqlite3
+*.db
+
+# --- Local uploads / generated outputs (optional; keep if team agrees) ---
+data/
+docs/plasmid_validation_output.json
+
