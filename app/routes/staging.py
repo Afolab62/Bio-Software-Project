@@ -1,7 +1,7 @@
 """
 Staging routes: UniProt accession + plasmid FASTA upload + validation.
 """
-from flask import Blueprint, render_template, request
+from flask import Blueprint, jsonify, render_template, request
 
 from app.services.staging import stage_experiment_validate_plasmid
 
@@ -55,3 +55,25 @@ def staging_submit():
         plasmid_fasta=plasmid_fasta,
         fetch_features=fetch_features,
     )
+
+
+@staging_bp.post("/api/staging")
+def staging_api():
+    """
+    JSON API endpoint for staging.
+    Expects: {accession, plasmid_fasta, fetch_features?}
+    """
+    data = request.get_json(silent=True) or {}
+    accession = str(data.get("accession", "")).strip()
+    plasmid_fasta = str(data.get("plasmid_fasta", "")).strip()
+    fetch_features = bool(data.get("fetch_features", True))
+
+    if not accession or not plasmid_fasta:
+        return jsonify({"error": "accession and plasmid_fasta are required"}), 400
+
+    result = stage_experiment_validate_plasmid(
+        accession=accession,
+        plasmid_fasta_text=plasmid_fasta,
+        fetch_features=fetch_features,
+    )
+    return jsonify(result), 200
