@@ -18,7 +18,8 @@ def test_wraparound_detection():
     split = 10 * 3
     plasmid = gene[split:] + ("A" * 50) + gene[:split]
 
-    call = find_wt_in_plasmid(plasmid, wt)
+    # Lower min_wt_len for short synthetic WT sequence used in this test.
+    call = find_wt_in_plasmid(plasmid, wt, min_wt_len=10)
 
     assert call.is_valid is True
     assert call.wraps_origin is True
