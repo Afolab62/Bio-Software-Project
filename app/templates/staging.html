@@ -10,7 +10,7 @@
         exact matching, fuzzy identity fallback, and a final local alignment step for indels.
       </div>
     </details>
-    <form method="post" enctype="multipart/form-data">
+    <form id="staging-form" method="post" enctype="multipart/form-data">
       <label for="accession">UniProt Accession</label>
       <input type="text" id="accession" name="accession" required value="{{ accession or '' }}">
 
@@ -56,19 +56,23 @@
   {% endif %}
 
   <script>
-    document.querySelector("form")?.addEventListener("submit", () => {
-      const btn = document.getElementById("validate-btn");
-      const loading = document.getElementById("loading-indicator");
-      if (btn) btn.setAttribute("disabled", "disabled");
+    const form = document.getElementById("staging-form");
+    const validateBtn = document.getElementById("validate-btn");
+    const loading = document.getElementById("loading-indicator");
+    const fastaBox = document.getElementById("plasmid_fasta");
+
+    form?.addEventListener("submit", () => {
+      if (validateBtn) validateBtn.setAttribute("disabled", "disabled");
       if (loading) loading.style.display = "inline";
     });
 
     document.getElementById("load-example")?.addEventListener("click", async () => {
       try {
-        const resp = await fetch("/staging/example");
+        const resp = await fetch("/staging/example", { headers: { "Accept": "application/json" } });
+        if (!resp.ok) return;
         const data = await resp.json();
-        if (data.fasta) {
-          document.getElementById("plasmid_fasta").value = data.fasta;
+        if (data.fasta && fastaBox) {
+          fastaBox.value = data.fasta;
         }
       } catch (e) {
         // no-op: example is optional
@@ -110,9 +114,9 @@
     });
 
     document.getElementById("reset-form")?.addEventListener("click", () => {
-      document.querySelector("form")?.reset();
-      const fasta = document.getElementById("plasmid_fasta");
-      if (fasta) fasta.value = \"\";
+      form?.reset();
+      if (fastaBox) fastaBox.value = "";
+      window.location.href = "/staging/";
     });
   </script>
 {% endblock %}
