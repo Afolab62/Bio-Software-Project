@@ -2,6 +2,7 @@
 {% block content %}
   <div class="card">
     <h2>Stage Experiment: WT Protein + Plasmid Validation</h2>
+    <p class="muted">Note: validation will fail if the plasmid does not encode the selected UniProt WT protein.</p>
     <form method="post" enctype="multipart/form-data">
       <label for="accession">UniProt Accession</label>
       <input type="text" id="accession" name="accession" required value="{{ accession or '' }}">
