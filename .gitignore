@@ -37,3 +37,11 @@ docs/plasmid_validation_output.json
 *.bak.*
 *~
 
+
+# --- Generated docs / reports ---
+docs/code_docs/
+docs/partc_code.pdf
+docs/partc_code.html
+submission/
+docs/*.pdf
+docs/*.html
