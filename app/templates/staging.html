@@ -15,6 +15,7 @@
       <input type="text" id="accession" name="accession" required value="{{ accession or '' }}">
 
       <label for="plasmid_fasta">Plasmid FASTA (paste)</label>
+      <div class="muted" style="margin-bottom: 6px;">FASTA should begin with a header line starting with “&gt;”.</div>
       <textarea id="plasmid_fasta" name="plasmid_fasta" rows="8">{{ plasmid_fasta or '' }}</textarea>
 
       <button type="button" id="load-example">Load Example FASTA</button>
@@ -27,7 +28,8 @@
         Fetch UniProt feature table
       </label>
 
-      <button type="submit">Validate</button>
+      <button type="submit" id="validate-btn">Validate</button>
+      <span id="loading-indicator" class="muted" style="margin-left: 8px; display: none;">Validating…</span>
     </form>
   </div>
 
@@ -41,7 +43,8 @@
       <span class="badge ok">Valid</span>
       <p class="ok">Validation complete.</p>
       <h4>Validation</h4>
-      <pre>{{ result.validation | tojson(indent=2) }}</pre>
+      <button type="button" id="copy-validation" style="margin-bottom: 8px;">Copy JSON</button>
+      <pre id="validation-json">{{ result.validation | tojson(indent=2) }}</pre>
       <h4>UniProt Features</h4>
       <pre>{{ result.features | tojson(indent=2) }}</pre>
     {% endif %}
@@ -49,6 +52,13 @@
   {% endif %}
 
   <script>
+    document.querySelector("form")?.addEventListener("submit", () => {
+      const btn = document.getElementById("validate-btn");
+      const loading = document.getElementById("loading-indicator");
+      if (btn) btn.setAttribute("disabled", "disabled");
+      if (loading) loading.style.display = "inline";
+    });
+
     document.getElementById("load-example")?.addEventListener("click", async () => {
       try {
         const resp = await fetch("/staging/example");
@@ -58,6 +68,16 @@
         }
       } catch (e) {
         // no-op: example is optional
+      }
+    });
+
+    document.getElementById("copy-validation")?.addEventListener("click", async () => {
+      const el = document.getElementById("validation-json");
+      if (!el) return;
+      try {
+        await navigator.clipboard.writeText(el.textContent);
+      } catch (e) {
+        // no-op: clipboard may be blocked
       }
     });
   </script>
