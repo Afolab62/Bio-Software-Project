@@ -32,3 +32,8 @@ instance/
 data/
 docs/plasmid_validation_output.json
 
+# Editor/backup files
+*.bak
+*.bak.*
+*~
+
