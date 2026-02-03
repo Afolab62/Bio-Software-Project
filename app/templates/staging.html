@@ -30,6 +30,8 @@
 
       <button type="submit" id="validate-btn">Validate</button>
       <span id="loading-indicator" class="muted" style="margin-left: 8px; display: none;">Validating…</span>
+      <button type="button" id="reset-form" style="margin-left: 8px;">Reset</button>
+      <div class="muted" style="margin-top: 6px;">Note: alignment fallback can be slower on very long sequences.</div>
     </form>
   </div>
 
@@ -44,9 +46,11 @@
       <p class="ok">Validation complete.</p>
       <h4>Validation</h4>
       <button type="button" id="copy-validation" style="margin-bottom: 8px;">Copy JSON</button>
+      <button type="button" id="download-validation" style="margin-left: 8px; margin-bottom: 8px;">Download JSON</button>
       <pre id="validation-json">{{ result.validation | tojson(indent=2) }}</pre>
       <h4>UniProt Features</h4>
-      <pre>{{ result.features | tojson(indent=2) }}</pre>
+      <button type="button" id="download-features" style="margin-bottom: 8px;">Download JSON</button>
+      <pre id="features-json">{{ result.features | tojson(indent=2) }}</pre>
     {% endif %}
   </div>
   {% endif %}
@@ -79,6 +83,36 @@
       } catch (e) {
         // no-op: clipboard may be blocked
       }
+    });
+
+    document.getElementById("download-validation")?.addEventListener("click", () => {
+      const el = document.getElementById("validation-json");
+      if (!el) return;
+      const blob = new Blob([el.textContent], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "validation.json";
+      a.click();
+      URL.revokeObjectURL(url);
+    });
+
+    document.getElementById("download-features")?.addEventListener("click", () => {
+      const el = document.getElementById("features-json");
+      if (!el) return;
+      const blob = new Blob([el.textContent], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "uniprot_features.json";
+      a.click();
+      URL.revokeObjectURL(url);
+    });
+
+    document.getElementById("reset-form")?.addEventListener("click", () => {
+      document.querySelector("form")?.reset();
+      const fasta = document.getElementById("plasmid_fasta");
+      if (fasta) fasta.value = \"\";
     });
   </script>
 {% endblock %}
