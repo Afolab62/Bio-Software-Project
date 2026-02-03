@@ -5,15 +5,28 @@
     <title>Directed Evolution Portal</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <style>
-      body { font-family: Arial, sans-serif; margin: 24px; }
-      .container { max-width: 900px; margin: 0 auto; }
-      .card { border: 1px solid #ddd; padding: 16px; border-radius: 8px; margin-top: 16px; }
+      :root {
+        --bg: #f6f7fb;
+        --card: #ffffff;
+        --text: #1c1f24;
+        --muted: #5e6572;
+        --accent: #1f6feb;
+        --ok: #1a7f37;
+        --err: #b42318;
+        --border: #e5e7eb;
+      }
+      body { font-family: Arial, sans-serif; margin: 0; background: var(--bg); color: var(--text); }
+      .container { max-width: 960px; margin: 32px auto; padding: 0 16px; }
+      .card { background: var(--card); border: 1px solid var(--border); padding: 20px; border-radius: 10px; margin-top: 16px; }
       label { display: block; margin-top: 12px; font-weight: 600; }
-      input[type="text"], textarea { width: 100%; padding: 8px; margin-top: 6px; }
-      button { margin-top: 12px; padding: 8px 16px; }
-      .error { color: #a00; }
-      .ok { color: #0a0; }
-      pre { background: #f7f7f7; padding: 12px; overflow: auto; }
+      input[type="text"], textarea, input[type="file"] { width: 100%; padding: 8px; margin-top: 6px; border: 1px solid var(--border); border-radius: 6px; }
+      button { margin-top: 12px; padding: 10px 16px; border: none; border-radius: 6px; background: var(--accent); color: white; cursor: pointer; }
+      button:hover { opacity: 0.95; }
+      .badge { display: inline-block; padding: 4px 8px; border-radius: 999px; font-size: 12px; margin-top: 8px; }
+      .badge.ok { background: #e7f6ec; color: var(--ok); }
+      .badge.err { background: #fdecea; color: var(--err); }
+      pre { background: #f3f4f6; padding: 12px; border-radius: 6px; overflow: auto; }
+      .muted { color: var(--muted); font-size: 13px; }
     </style>
   </head>
   <body>
