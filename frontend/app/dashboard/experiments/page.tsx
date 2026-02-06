@@ -189,7 +189,7 @@ export default function ExperimentsPage() {
                               e.stopPropagation();
                               handleDelete(exp.id, exp.name);
                             }}
-                            className="text-muted-foreground hover:text-destructive"
+                            className="text-muted-foreground hover:text-white hover:bg-destructive/90"
                           >
                             <Trash2 className="h-4 w-4" />
                             <span className="sr-only">Delete</span>
