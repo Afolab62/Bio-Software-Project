@@ -1,0 +1,19 @@
+{
+  "python.defaultInterpreterPath": "python",
+  "python.terminal.activateEnvironment": false,
+  "python.envFile": "${workspaceFolder}/backend/.env",
+  "python.analysis.autoSearchPaths": false,
+  "python.analysis.extraPaths": [],
+  "python.condaPath": "",
+  "python.interpreter.infoVisibility": "never",
+  "python.experiments.enabled": false,
+  "python.terminal.executeInFileDir": false,
+  "conda.condaPath": "disabled",
+  "python-envs.pythonProjects": [
+    {
+      "path": "",
+      "envManager": "ms-python.python:system",
+      "packageManager": "ms-python.python:pip"
+    }
+  ]
+}
