@@ -31,9 +31,12 @@ export default function DashboardPage() {
       if (!user) return;
 
       try {
-        const res = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000'}/api/experiments?userId=${user.id}`, {
-          credentials: 'include'
-        });
+        const res = await fetch(
+          `${process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000"}/api/experiments?userId=${user.id}`,
+          {
+            credentials: "include",
+          },
+        );
         const data = await res.json();
         if (data.success) {
           setExperiments(data.experiments);
