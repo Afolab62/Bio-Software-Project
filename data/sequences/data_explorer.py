@@ -1,7 +1,7 @@
 '''
 Date: 2026-01-27
 Here I perform an initial exloration of sample data 
-1)The TSV file hads in total 10 rows and 7 columns 
+1)The TSV file has in total 10 rows and 7 columns 
 Columns name:Plasmid_Variant_Index', 'Parent_Plasmid_Variant',
        'Directed_Evolution_Generation', 'Assembled_DNA_Sequence',
        'DNA_Quantification_fg', 'Protein_Quantification_pg', 'Control'],
@@ -17,7 +17,7 @@ boolean=Control column
 3)fasta.file
 '''
 #1
-import pandas as pd
+import pandas as pd 
 df_tsv=pd.read_csv("/Users/virginialaspina/Desktop/group_project/Directed-Evolution-Portal/data/sequences/DE_BSU_Pol_Batch_1.tsv" ,delimiter='\t')
 print(df_tsv.head(10))
 print(len(df_tsv))
@@ -27,8 +27,16 @@ text_cols =df_tsv.select_dtypes(include ="object").columns
 print(f"Numeric columns{numeric_cols}")
 print(f"Text columns{text_cols}")
 print(df_tsv.select_dtypes(include="boolean").columns)
+#to check how many unique generation number 
+unique_generation=df_tsv["Directed_Evolution_Generation"].unique()
+#how many variants for each generation /how many number one there are 
+print(df_tsv["Directed_Evolution_Generation"].value_counts())
 
 
 
-#2
+
+
+
+
+#2 
 
