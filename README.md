@@ -96,7 +96,6 @@ FRONTEND_URL=http://localhost:3000
 
 **Important:** Replace the placeholder values with your actual configuration:
 
-- Generate a secure `SECRET_KEY` (e.g., using `python -c "import secrets; print(secrets.token_hex(32))"`)
 - Update `DATABASE_URL` with your Neon database connection string (available in your Neon dashboard)
 - Adjust `FRONTEND_URL` if using a different port
 
