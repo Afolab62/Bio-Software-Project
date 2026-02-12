@@ -1,6 +1,12 @@
 # Sequence Analysis Module - Section 4.a
 ## DNA to Protein Processing for Directed Evolution
 
+## Documentation
+
+- Project overview and doc index: `README.md`
+- User workflow manual: `docs/user-manual.md`
+- Unifying activity metric and QC details: `docs/activity-metric-and-qc.md`
+
 
 ---
 
@@ -104,7 +110,6 @@ Track how mutations accumulate through generations:
 tool = AnalysisQueryTool(db_path)
 lineage = tool.get_lineage_trace(variant_index=100)
 # Returns full ancestry from WT to variant 100
-
 
 
 
