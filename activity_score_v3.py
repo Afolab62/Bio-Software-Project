@@ -119,11 +119,12 @@ def compute_activity_score(df):
         # copy of the dataframe
                 
         out = df.copy()
-v
+
         # DNA and protein yield columns converted to numeric values
         # (ensures the values are not registered as string values)
                 
-        out['DNA_Quantification_fg'] = pd.to_numeric(out['DNA_Quantification_fg'], errors = 'coerce')
+
+		out['DNA_Quantification_fg'] = pd.to_numeric(out['DNA_Quantification_fg'], errors = 'coerce')
         out['Protein_Quantification_pg'] = pd.to_numeric(out['Protein_Quantification_pg'], errors = 'coerce')
                 
         # checkpoint
