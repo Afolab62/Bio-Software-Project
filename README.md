@@ -1,4 +1,4 @@
-# Part C — Plasmid Validation (Staging)
+# Plasmid Validation (Staging)
 
 This module stages a directed evolution experiment by validating that an uploaded plasmid FASTA encodes the selected UniProt WT protein. It is generalizable to any UniProt accession and plasmid FASTA and handles circular DNA.
 
