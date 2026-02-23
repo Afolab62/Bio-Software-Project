@@ -1,7 +1,7 @@
-"use client"
+"use client";
 
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   Table,
   TableBody,
@@ -9,15 +9,15 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from '@/components/ui/table'
-import { cn } from '@/lib/utils'
-import type { VariantData } from '@/lib/types'
+} from "@/components/ui/table";
+import { cn } from "@/lib/utils";
+import type { VariantData } from "@/lib/types";
 
 interface TopPerformersTableProps {
-  variants: VariantData[]
-  onSelectVariant?: (index: number) => void
-  selectedVariant?: number | null
-  detailed?: boolean
+  variants: VariantData[];
+  onSelectVariant?: (index: number) => void;
+  selectedVariant?: number | null;
+  detailed?: boolean;
 }
 
 export function TopPerformersTable({
@@ -31,7 +31,7 @@ export function TopPerformersTable({
       <div className="text-center py-8 text-muted-foreground">
         No variants to display
       </div>
-    )
+    );
   }
 
   return (
@@ -43,12 +43,13 @@ export function TopPerformersTable({
             <TableHead>Variant Index</TableHead>
             <TableHead>Generation</TableHead>
             <TableHead>Activity Score</TableHead>
-            <TableHead>Total Mutations</TableHead>
+            <TableHead title="Non-synonymous mutations only (amino acid changes)">
+              Total Mutations
+            </TableHead>
             {detailed && (
               <>
                 <TableHead>DNA Yield</TableHead>
                 <TableHead>Protein Yield</TableHead>
-                <TableHead>Fluorescence</TableHead>
               </>
             )}
             <TableHead className="text-right">Actions</TableHead>
@@ -59,7 +60,8 @@ export function TopPerformersTable({
             <TableRow
               key={variant.id}
               className={cn(
-                selectedVariant === variant.plasmidVariantIndex && "bg-primary/5"
+                selectedVariant === variant.plasmidVariantIndex &&
+                  "bg-primary/5",
               )}
             >
               <TableCell className="font-medium">
@@ -83,19 +85,22 @@ export function TopPerformersTable({
                 {variant.activityScore.toFixed(3)}
               </TableCell>
               <TableCell>
-                <span className={cn(
-                  "font-medium",
-                  variant.mutations.length > 5 && "text-destructive",
-                  variant.mutations.length > 0 && variant.mutations.length <= 5 && "text-accent"
-                )}>
-                  {variant.mutations.length}
+                <span
+                  className={cn(
+                    "font-medium",
+                    (variant.mutations?.filter(m => m.type !== 'synonymous').length ?? 0) > 5 && "text-destructive",
+                    (variant.mutations?.filter(m => m.type !== 'synonymous').length ?? 0) > 0 &&
+                      (variant.mutations?.filter(m => m.type !== 'synonymous').length ?? 0) <= 5 &&
+                      "text-accent",
+                  )}
+                >
+                  {variant.mutations?.filter(m => m.type !== 'synonymous').length ?? 0}
                 </span>
               </TableCell>
               {detailed && (
                 <>
                   <TableCell>{variant.dnaYield.toFixed(2)}</TableCell>
                   <TableCell>{variant.proteinYield.toFixed(2)}</TableCell>
-                  <TableCell>{variant.fluorescence.toFixed(2)}</TableCell>
                 </>
               )}
               <TableCell className="text-right">
@@ -104,7 +109,8 @@ export function TopPerformersTable({
                   size="sm"
                   onClick={() => onSelectVariant?.(variant.plasmidVariantIndex)}
                   className={cn(
-                    selectedVariant === variant.plasmidVariantIndex && "bg-primary/10"
+                    selectedVariant === variant.plasmidVariantIndex &&
+                      "bg-primary/10",
                   )}
                 >
                   View Mutations
@@ -115,5 +121,5 @@ export function TopPerformersTable({
         </TableBody>
       </Table>
     </div>
-  )
+  );
 }

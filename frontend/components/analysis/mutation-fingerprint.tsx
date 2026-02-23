@@ -1,33 +1,45 @@
-"use client"
+"use client";
 
-import { useMemo } from 'react'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Badge } from '@/components/ui/badge'
-import { cn } from '@/lib/utils'
-import { Dna, AlertCircle } from 'lucide-react'
-import type { VariantData, Mutation } from '@/lib/types'
+import { useMemo } from "react";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
+import { Dna, AlertCircle } from "lucide-react";
+import type { VariantData, Mutation } from "@/lib/types";
 
 interface MutationFingerprintProps {
-  variants: VariantData[]
-  wtSequence: string
-  selectedVariantIndex: number | null
-  onSelectVariant: (index: number) => void
+  variants: VariantData[];
+  wtSequence: string;
+  selectedVariantIndex: number | null;
+  onSelectVariant: (index: number) => void;
 }
 
 // Generation colors
 const GENERATION_COLORS = [
-  'bg-blue-500',
-  'bg-green-500',
-  'bg-yellow-500',
-  'bg-orange-500',
-  'bg-red-500',
-  'bg-purple-500',
-  'bg-pink-500',
-  'bg-cyan-500',
-  'bg-emerald-500',
-  'bg-indigo-500',
-]
+  "bg-blue-500",
+  "bg-green-500",
+  "bg-yellow-500",
+  "bg-orange-500",
+  "bg-red-500",
+  "bg-purple-500",
+  "bg-pink-500",
+  "bg-cyan-500",
+  "bg-emerald-500",
+  "bg-indigo-500",
+];
 
 export function MutationFingerprint({
   variants,
@@ -35,59 +47,76 @@ export function MutationFingerprint({
   selectedVariantIndex,
   onSelectVariant,
 }: MutationFingerprintProps) {
-  const selectedVariant = variants.find(v => v.plasmidVariantIndex === selectedVariantIndex)
-  
+  const selectedVariant = variants.find(
+    (v) => v.plasmidVariantIndex === selectedVariantIndex,
+  );
+
   const generations = useMemo(() => {
-    return [...new Set(variants.flatMap(v => v.mutations.map(m => m.generation)))].sort((a, b) => a - b)
-  }, [variants])
+    return [
+      ...new Set(
+        variants.flatMap((v) => 
+          (v.mutations ?? [])
+            .filter(m => m.type !== 'synonymous')
+            .map((m) => m.generation)
+        ),
+      ),
+    ].sort((a, b) => a - b);
+  }, [variants]);
 
   // Create position map for visualization
   const positionBlocks = useMemo(() => {
-    if (!selectedVariant || !wtSequence) return []
-    
+    if (!selectedVariant || !wtSequence) return [];
+
     const blocks: Array<{
-      position: number
-      wt: string
-      mut: string | null
-      generation: number | null
-      isMutated: boolean
-    }> = []
-    
+      position: number;
+      wt: string;
+      mut: string | null;
+      generation: number | null;
+      isMutated: boolean;
+    }> = [];
+
     const mutationMap = new Map(
-      selectedVariant.mutations.map(m => [m.position, m])
-    )
-    
+      (selectedVariant.mutations ?? [])
+        .filter(m => m.type !== 'synonymous')
+        .map((m) => [m.position, m]),
+    );
+
     // Show only the region with mutations + some context
-    const mutPositions = selectedVariant.mutations.map(m => m.position)
+    const mutPositions = (selectedVariant.mutations ?? [])
+      .filter(m => m.type !== 'synonymous')
+      .map((m) => m.position);
     if (mutPositions.length === 0) {
       // Show first 100 residues if no mutations
       for (let i = 1; i <= Math.min(100, wtSequence.length); i++) {
         blocks.push({
           position: i,
-          wt: wtSequence[i - 1] || '-',
+          wt: wtSequence[i - 1] || "-",
           mut: null,
           generation: null,
           isMutated: false,
-        })
+        });
       }
     } else {
-      const minPos = Math.max(1, Math.min(...mutPositions) - 10)
-      const maxPos = Math.min(wtSequence.length, Math.max(...mutPositions) + 10)
-      
+      const minPos = Math.max(1, Math.min(...mutPositions) - 10);
+      const maxPos = Math.min(
+        wtSequence.length,
+        Math.max(...mutPositions) + 10,
+      );
+
       for (let i = minPos; i <= maxPos; i++) {
-        const mutation = mutationMap.get(i)
+        const mutation = mutationMap.get(i);
         blocks.push({
           position: i,
-          wt: wtSequence[i - 1] || '-',
+          wt: wtSequence[i - 1] || "-",
           mut: mutation?.mutant || null,
           generation: mutation?.generation ?? null,
           isMutated: !!mutation,
-        })
+        });
       }
     }
-    
-    return blocks
-  }, [selectedVariant, wtSequence])
+
+    return blocks;
+  }, [selectedVariant, wtSequence]);
 
   return (
     <Card>
@@ -97,16 +126,18 @@ export function MutationFingerprint({
           Mutation Fingerprint
         </CardTitle>
         <CardDescription>
-          Visualize specific amino acid changes colored by generation
+          Visualize specific amino acid changes colored by generation (non-synonymous mutations only)
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
         {/* Variant selector */}
         <div className="flex flex-col sm:flex-row gap-4">
           <div className="flex-1">
-            <label className="text-sm font-medium mb-2 block">Select Variant</label>
-            <Select 
-              value={selectedVariantIndex?.toString() || ''} 
+            <label className="text-sm font-medium mb-2 block">
+              Select Variant
+            </label>
+            <Select
+              value={selectedVariantIndex?.toString() || ""}
               onValueChange={(v) => onSelectVariant(parseInt(v))}
             >
               <SelectTrigger>
@@ -114,8 +145,12 @@ export function MutationFingerprint({
               </SelectTrigger>
               <SelectContent>
                 {variants.map((v, idx) => (
-                  <SelectItem key={v.id} value={v.plasmidVariantIndex.toString()}>
-                    #{idx + 1} - Variant {v.plasmidVariantIndex} (Activity: {v.activityScore.toFixed(3)})
+                  <SelectItem
+                    key={v.id}
+                    value={v.plasmidVariantIndex.toString()}
+                  >
+                    #{idx + 1} - Variant {v.plasmidVariantIndex} (Activity:{" "}
+                    {v.activityScore.toFixed(3)})
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -129,7 +164,12 @@ export function MutationFingerprint({
             <span className="text-sm font-medium">Generation Colors:</span>
             {generations.map((gen, idx) => (
               <div key={gen} className="flex items-center gap-1.5">
-                <div className={cn('w-3 h-3 rounded', GENERATION_COLORS[idx % GENERATION_COLORS.length])} />
+                <div
+                  className={cn(
+                    "w-3 h-3 rounded",
+                    GENERATION_COLORS[idx % GENERATION_COLORS.length],
+                  )}
+                />
                 <span className="text-xs text-muted-foreground">Gen {gen}</span>
               </div>
             ))}
@@ -144,7 +184,8 @@ export function MutationFingerprint({
               Select a variant above to view its mutation fingerprint
             </p>
           </div>
-        ) : selectedVariant.mutations.length === 0 ? (
+        ) : !selectedVariant.mutations ||
+          selectedVariant.mutations.length === 0 ? (
           <div className="text-center py-8">
             <p className="text-muted-foreground">
               This variant has no mutations compared to the wild type
@@ -155,20 +196,28 @@ export function MutationFingerprint({
             {/* Variant info */}
             <div className="flex flex-wrap gap-4 text-sm">
               <div>
-                <span className="text-muted-foreground">Variant:</span>{' '}
-                <span className="font-mono font-medium">{selectedVariant.plasmidVariantIndex}</span>
+                <span className="text-muted-foreground">Variant:</span>{" "}
+                <span className="font-mono font-medium">
+                  {selectedVariant.plasmidVariantIndex}
+                </span>
               </div>
               <div>
-                <span className="text-muted-foreground">Generation:</span>{' '}
-                <Badge variant="outline">Gen {selectedVariant.generation}</Badge>
+                <span className="text-muted-foreground">Generation:</span>{" "}
+                <Badge variant="outline">
+                  Gen {selectedVariant.generation}
+                </Badge>
               </div>
               <div>
-                <span className="text-muted-foreground">Total Mutations:</span>{' '}
-                <span className="font-medium">{selectedVariant.mutations.length}</span>
+                <span className="text-muted-foreground">Total Mutations:</span>{" "}
+                <span className="font-medium">
+                  {selectedVariant.mutations?.filter(m => m.type !== 'synonymous').length ?? 0}
+                </span>
               </div>
               <div>
-                <span className="text-muted-foreground">Activity:</span>{' '}
-                <span className="font-medium text-primary">{selectedVariant.activityScore.toFixed(3)}</span>
+                <span className="text-muted-foreground">Activity:</span>{" "}
+                <span className="font-medium text-primary">
+                  {selectedVariant.activityScore.toFixed(3)}
+                </span>
               </div>
             </div>
 
@@ -178,59 +227,61 @@ export function MutationFingerprint({
                 {/* Position numbers row */}
                 <div className="flex gap-0.5 text-muted-foreground">
                   {positionBlocks.map((block) => (
-                    <div 
-                      key={`pos-${block.position}`} 
+                    <div
+                      key={`pos-${block.position}`}
                       className={cn(
-                        'w-6 text-center',
-                        block.isMutated && 'font-bold'
+                        "w-6 text-center",
+                        block.isMutated && "font-bold",
                       )}
                     >
-                      {block.position % 10 === 0 ? block.position : ''}
+                      {block.position % 10 === 0 ? block.position : ""}
                     </div>
                   ))}
                 </div>
-                
+
                 {/* WT sequence row */}
                 <div className="flex gap-0.5">
                   <span className="w-12 text-muted-foreground">WT:</span>
                   {positionBlocks.map((block) => (
-                    <div 
+                    <div
                       key={`wt-${block.position}`}
                       className={cn(
-                        'w-6 text-center rounded',
-                        block.isMutated && 'line-through text-muted-foreground'
+                        "w-6 text-center rounded",
+                        block.isMutated && "line-through text-muted-foreground",
                       )}
                     >
                       {block.wt}
                     </div>
                   ))}
                 </div>
-                
+
                 {/* Mutant sequence row */}
                 <div className="flex gap-0.5">
                   <span className="w-12 text-muted-foreground">Mut:</span>
                   {positionBlocks.map((block) => {
-                    const genIdx = block.generation !== null 
-                      ? generations.indexOf(block.generation) 
-                      : -1
-                    
+                    const genIdx =
+                      block.generation !== null
+                        ? generations.indexOf(block.generation)
+                        : -1;
+
                     return (
-                      <div 
+                      <div
                         key={`mut-${block.position}`}
                         className={cn(
-                          'w-6 text-center rounded font-bold',
-                          block.isMutated && genIdx >= 0 
+                          "w-6 text-center rounded font-bold",
+                          block.isMutated && genIdx >= 0
                             ? `${GENERATION_COLORS[genIdx % GENERATION_COLORS.length]} text-white`
-                            : 'text-muted-foreground/30'
+                            : "text-muted-foreground/30",
                         )}
-                        title={block.isMutated 
-                          ? `${block.wt}${block.position}${block.mut} (Gen ${block.generation})`
-                          : undefined
+                        title={
+                          block.isMutated
+                            ? `${block.wt}${block.position}${block.mut} (Gen ${block.generation})`
+                            : undefined
                         }
                       >
                         {block.mut || block.wt}
                       </div>
-                    )
+                    );
                   })}
                 </div>
               </div>
@@ -240,26 +291,34 @@ export function MutationFingerprint({
             <div className="space-y-2">
               <h4 className="text-sm font-medium">Mutation Details</h4>
               <div className="flex flex-wrap gap-2">
-                {selectedVariant.mutations.map((mut, idx) => {
-                  const genIdx = generations.indexOf(mut.generation)
+                {(selectedVariant.mutations ?? [])
+                  .filter(m => m.type !== 'synonymous')
+                  .map((mut, idx) => {
+                  const genIdx = generations.indexOf(mut.generation);
                   return (
-                    <Badge 
+                    <Badge
                       key={idx}
                       variant="outline"
-                      className={cn(
-                        'font-mono',
-                        genIdx >= 0 && `border-2`,
-                      )}
+                      className={cn("font-mono", genIdx >= 0 && `border-2`)}
                       style={{
-                        borderColor: genIdx >= 0 
-                          ? getColorFromClass(GENERATION_COLORS[genIdx % GENERATION_COLORS.length])
-                          : undefined
+                        borderColor:
+                          genIdx >= 0
+                            ? getColorFromClass(
+                                GENERATION_COLORS[
+                                  genIdx % GENERATION_COLORS.length
+                                ],
+                              )
+                            : undefined,
                       }}
                     >
-                      {mut.wildType}{mut.position}{mut.mutant}
-                      <span className="ml-1 text-muted-foreground">(Gen {mut.generation})</span>
+                      {mut.wildType}
+                      {mut.position}
+                      {mut.mutant}
+                      <span className="ml-1 text-muted-foreground">
+                        (Gen {mut.generation})
+                      </span>
                     </Badge>
-                  )
+                  );
                 })}
               </div>
             </div>
@@ -267,22 +326,22 @@ export function MutationFingerprint({
         )}
       </CardContent>
     </Card>
-  )
+  );
 }
 
 // Helper to convert Tailwind class to actual color
 function getColorFromClass(className: string): string {
   const colorMap: Record<string, string> = {
-    'bg-blue-500': '#3b82f6',
-    'bg-green-500': '#22c55e',
-    'bg-yellow-500': '#eab308',
-    'bg-orange-500': '#f97316',
-    'bg-red-500': '#ef4444',
-    'bg-purple-500': '#a855f7',
-    'bg-pink-500': '#ec4899',
-    'bg-cyan-500': '#06b6d4',
-    'bg-emerald-500': '#10b981',
-    'bg-indigo-500': '#6366f1',
-  }
-  return colorMap[className] || '#888888'
+    "bg-blue-500": "#3b82f6",
+    "bg-green-500": "#22c55e",
+    "bg-yellow-500": "#eab308",
+    "bg-orange-500": "#f97316",
+    "bg-red-500": "#ef4444",
+    "bg-purple-500": "#a855f7",
+    "bg-pink-500": "#ec4899",
+    "bg-cyan-500": "#06b6d4",
+    "bg-emerald-500": "#10b981",
+    "bg-indigo-500": "#6366f1",
+  };
+  return colorMap[className] || "#888888";
 }

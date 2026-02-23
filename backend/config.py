@@ -8,8 +8,8 @@ class Config:
     SECRET_KEY = os.getenv('SECRET_KEY', 'dev-secret-key-change-in-production')
     
     # Database configuration
-    # Convert postgresql:// to postgresql+psycopg:// for psycopg3
-    db_url = os.getenv('DATABASE_URL', '')
+    # Falls back to local SQLite if DATABASE_URL is not set
+    db_url = os.getenv('DATABASE_URL', 'sqlite:///./dem_portal.db')
     if db_url.startswith('postgresql://'):
         db_url = db_url.replace('postgresql://', 'postgresql+psycopg://', 1)
     SQLALCHEMY_DATABASE_URI = db_url

@@ -36,6 +36,7 @@ function AnalysisContent() {
     searchParams.get("experiment") || "",
   );
   const [variants, setVariants] = useState<VariantData[]>([]);
+  const [topPerformers, setTopPerformers] = useState<VariantData[]>([]);
   const [selectedExperiment, setSelectedExperiment] =
     useState<Experiment | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -109,14 +110,39 @@ function AnalysisContent() {
     loadVariants();
   }, [selectedExpId]);
 
+  // Load top performers with mutations
+  useEffect(() => {
+    async function loadTopPerformers() {
+      if (!selectedExpId) {
+        setTopPerformers([]);
+        return;
+      }
+
+      try {
+        const res = await fetch(
+          `${process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000"}/api/experiments/${selectedExpId}/top-performers?limit=10&include_mutations=true`,
+          {
+            credentials: "include",
+          },
+        );
+        const data = await res.json();
+
+        if (data.success) {
+          setTopPerformers(data.topPerformers || []);
+        }
+      } catch (err) {
+        console.error("Failed to load top performers:", err);
+      }
+    }
+
+    loadTopPerformers();
+  }, [selectedExpId]);
+
   if (isLoading) {
     return null;
   }
 
   const passedVariants = variants.filter((v) => v.qcStatus === "passed");
-  const topPerformers = [...passedVariants]
-    .sort((a, b) => b.activityScore - a.activityScore)
-    .slice(0, 10);
 
   return (
     <div className="space-y-6">
@@ -273,14 +299,17 @@ function AnalysisContent() {
             <TabsContent value="mutations" className="mt-6">
               <MutationFingerprint
                 variants={topPerformers}
-                wtSequence={selectedExperiment?.protein?.sequence || ""}
+                wtSequence={selectedExperiment?.wtProteinSequence || ""}
                 selectedVariantIndex={selectedVariantIndex}
                 onSelectVariant={(idx) => setSelectedVariantIndex(idx)}
               />
             </TabsContent>
 
             <TabsContent value="landscape" className="mt-6">
-              <ActivityLandscape variants={passedVariants} />
+              <ActivityLandscape
+                variants={passedVariants}
+                experimentId={selectedExpId}
+              />
             </TabsContent>
           </Tabs>
         </>

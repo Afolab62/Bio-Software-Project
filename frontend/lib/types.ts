@@ -38,6 +38,8 @@ export interface Experiment {
   plasmidName: string;
   validationStatus: "pending" | "valid" | "invalid";
   validationMessage: string;
+  analysisStatus: "not_started" | "analyzing" | "completed" | "failed";
+  analysisMessage?: string | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -52,10 +54,10 @@ export interface VariantData {
   proteinSequence: string;
   dnaYield: number;
   proteinYield: number;
-  fluorescence: number;
   activityScore: number;
   isControl: boolean;
-  mutations: Mutation[];
+  mutations?: Mutation[]; // Optional: only available after sequence analysis
+  mutationCount?: number; // Always available after analysis (even without full mutation details)
   qcStatus: "passed" | "failed";
   qcMessage: string;
   metadata: Record<string, unknown>;
@@ -65,6 +67,9 @@ export interface Mutation {
   position: number;
   wildType: string;
   mutant: string;
+  wtCodon?: string; // DNA codon for wild-type
+  mutCodon?: string; // DNA codon for mutant
+  mutAa?: string; // Mutant amino acid (alias for backward compatibility)
   type: "synonymous" | "non-synonymous";
   generation: number;
 }

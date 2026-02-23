@@ -28,7 +28,6 @@ import {
   AlertTriangle,
 } from "lucide-react";
 import type { Experiment, VariantData } from "@/lib/types";
-import { use } from "react"; // Import the use hook
 
 export default function ExperimentDetailPage() {
   const params = useParams();
@@ -39,6 +38,7 @@ export default function ExperimentDetailPage() {
   const [variants, setVariants] = useState<VariantData[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isUploading, setIsUploading] = useState(false);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [uploadResult, setUploadResult] = useState<{
     parsed: number;
     processed: number;
@@ -51,6 +51,45 @@ export default function ExperimentDetailPage() {
   useEffect(() => {
     loadExperiment();
   }, [id]);
+
+  // Poll every 3 seconds while analysis is running in the background
+  useEffect(() => {
+    if (experiment?.analysisStatus !== "analyzing") return;
+
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch(
+          `${process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000"}/api/experiments/${id}`,
+          { credentials: "include" },
+        );
+        const data = await res.json();
+        if (data.success) {
+          setExperiment(data.experiment);
+          setVariants(data.variants || []);
+          if (data.experiment.analysisStatus !== "analyzing") {
+            clearInterval(interval);
+            setIsAnalyzing(false);
+            if (data.experiment.analysisStatus === "completed") {
+              toast({
+                title: "Analysis Complete!",
+                description: data.experiment.analysisMessage || "Sequences analyzed successfully",
+              });
+            } else if (data.experiment.analysisStatus === "failed") {
+              toast({
+                title: "Analysis Failed",
+                description: data.experiment.analysisMessage || "An error occurred",
+                variant: "destructive",
+              });
+            }
+          }
+        }
+      } catch {
+        // Network error — keep polling
+      }
+    }, 3000);
+
+    return () => clearInterval(interval);
+  }, [experiment?.analysisStatus, id]);
 
   const loadExperiment = async () => {
     try {
@@ -69,7 +108,8 @@ export default function ExperimentDetailPage() {
         toast({ title: "Experiment not found", variant: "destructive" });
         router.push("/dashboard/experiments");
       }
-    } catch {
+    } catch (error) {
+      console.error("Failed to load experiment:", error);
       toast({ title: "Failed to load experiment", variant: "destructive" });
     } finally {
       setIsLoading(false);
@@ -84,29 +124,27 @@ export default function ExperimentDetailPage() {
     setUploadResult(null);
 
     try {
-      // TODO: Implement client-side parsing or backend parse endpoint
-      toast({
-        title: "Parsing not yet implemented",
-        description: "Parse functionality needs to be migrated",
-        variant: "destructive",
-      });
-      setIsUploading(false);
-      return;
-
       const content = await file.text();
       const format = file.name.endsWith(".json") ? "json" : "tsv";
 
-      const res = await fetch(`/api/experiments/${id}/parse`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ data: content, format }),
-      });
+      const res = await fetch(
+        `${process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000"}/api/experiments/${id}/upload-data`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ data: content, format }),
+        },
+      );
 
       const result = await res.json();
 
       if (result.success) {
         setUploadResult(result);
-        toast({ title: `Parsed ${result.processed} variants successfully` });
+        toast({
+          title: "Success!",
+          description: `Parsed ${result.processed} variants successfully. ${result.failedQC} rows failed QC.`,
+        });
         loadExperiment();
       } else {
         toast({
@@ -114,10 +152,52 @@ export default function ExperimentDetailPage() {
           variant: "destructive",
         });
       }
-    } catch {
+    } catch (error) {
+      console.error("Upload error:", error);
       toast({ title: "Failed to upload file", variant: "destructive" });
     } finally {
       setIsUploading(false);
+    }
+  };
+
+  const handleAnalyzeSequences = async () => {
+    if (!experiment) return;
+
+    setIsAnalyzing(true);
+
+    try {
+      const res = await fetch(
+        `${process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000"}/api/experiments/${id}/analyze-sequences`,
+        {
+          method: "POST",
+          credentials: "include",
+        },
+      );
+
+      const result = await res.json();
+
+      if (result.success) {
+        // Backend starts analysis in background and returns immediately.
+        // Update local state so polling useEffect kicks in.
+        toast({
+          title: "Analysis Started",
+          description: "Running in background — status will update automatically.",
+        });
+        setExperiment((prev) =>
+          prev ? { ...prev, analysisStatus: "analyzing" } : prev,
+        );
+        // isAnalyzing stays true — polling will set it false when done
+      } else {
+        toast({
+          title: result.error || "Analysis failed",
+          variant: "destructive",
+        });
+        setIsAnalyzing(false);
+      }
+    } catch (error) {
+      console.error("Analysis error:", error);
+      toast({ title: "Failed to analyze sequences", variant: "destructive" });
+      setIsAnalyzing(false);
     }
   };
 
@@ -428,6 +508,93 @@ export default function ExperimentDetailPage() {
               )}
             </CardContent>
           </Card>
+
+          {/* Sequence Analysis Section */}
+          {variants.length > 0 && (
+            <Card className="mt-6">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Dna className="h-5 w-5" />
+                  Sequence Analysis
+                </CardTitle>
+                <CardDescription>
+                  Analyze DNA sequences to detect protein mutations
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex items-center justify-between p-4 border rounded-lg">
+                  <div className="flex-1">
+                    <p className="font-medium mb-1">Analysis Status</p>
+                    <div className="flex items-center gap-2">
+                      {experiment.analysisStatus === "completed" ? (
+                        <>
+                          <CheckCircle2 className="h-4 w-4 text-accent" />
+                          <span className="text-sm text-muted-foreground">
+                            {experiment.analysisMessage || "Analysis completed"}
+                          </span>
+                        </>
+                      ) : experiment.analysisStatus === "analyzing" ? (
+                        <>
+                          <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                          <span className="text-sm text-muted-foreground">
+                            Analysis in progress...
+                          </span>
+                        </>
+                      ) : experiment.analysisStatus === "failed" ? (
+                        <>
+                          <XCircle className="h-4 w-4 text-destructive" />
+                          <span className="text-sm text-destructive">
+                            {experiment.analysisMessage || "Analysis failed"}
+                          </span>
+                        </>
+                      ) : (
+                        <>
+                          <AlertTriangle className="h-4 w-4 text-yellow-500" />
+                          <span className="text-sm text-muted-foreground">
+                            Not yet analyzed
+                          </span>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                  <Button
+                    onClick={handleAnalyzeSequences}
+                    disabled={
+                      isAnalyzing || experiment.analysisStatus === "analyzing"
+                    }
+                    variant={
+                      experiment.analysisStatus === "completed"
+                        ? "outline"
+                        : "default"
+                    }
+                  >
+                    {isAnalyzing ||
+                    experiment.analysisStatus === "analyzing" ? (
+                      <>
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        Analyzing...
+                      </>
+                    ) : experiment.analysisStatus === "completed" ? (
+                      <>
+                        <Dna className="h-4 w-4 mr-2" />
+                        Re-analyze
+                      </>
+                    ) : (
+                      <>
+                        <Dna className="h-4 w-4 mr-2" />
+                        Analyze Sequences
+                      </>
+                    )}
+                  </Button>
+                </div>
+                <div className="text-sm text-muted-foreground space-y-1">
+                  <p>• Translates DNA sequences to protein sequences</p>
+                  <p>• Detects mutations compared to wild-type</p>
+                  <p>• Analysis may take several minutes for large datasets</p>
+                </div>
+              </CardContent>
+            </Card>
+          )}
         </TabsContent>
 
         {variants.length > 0 && (
@@ -449,7 +616,6 @@ export default function ExperimentDetailPage() {
                         <th className="text-left py-2 px-2">DNA Yield</th>
                         <th className="text-left py-2 px-2">Protein</th>
                         <th className="text-left py-2 px-2">Activity</th>
-                        <th className="text-left py-2 px-2">Mutations</th>
                         <th className="text-left py-2 px-2">QC</th>
                       </tr>
                     </thead>
@@ -472,7 +638,6 @@ export default function ExperimentDetailPage() {
                             <td className="py-2 px-2 font-medium">
                               {v.activityScore.toFixed(3)}
                             </td>
-                            <td className="py-2 px-2">{v.mutations.length}</td>
                             <td className="py-2 px-2">
                               <Badge
                                 variant={

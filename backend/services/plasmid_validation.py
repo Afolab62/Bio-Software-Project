@@ -699,3 +699,4 @@ def find_wt_in_plasmid(
         diagnostics=diagnostics,
     )
 
+print (GeneCall)

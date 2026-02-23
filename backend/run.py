@@ -5,7 +5,11 @@ from config import Config
 from routes.auth import auth_bp
 from routes.experiments import experiments_bp
 from routes.uniprot import uniprot_bp
+from routes.landscape import landscape_bp
 from database import init_db
+
+# Import models to register them with Base before init_db
+from models import User, Experiment, VariantData, Mutation
 
 
 def create_app():
@@ -25,6 +29,7 @@ def create_app():
     app.register_blueprint(auth_bp)
     app.register_blueprint(experiments_bp)
     app.register_blueprint(uniprot_bp)
+    app.register_blueprint(landscape_bp)
     
     # Health check endpoint
     @app.route('/health', methods=['GET'])

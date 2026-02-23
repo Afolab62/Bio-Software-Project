@@ -1,212 +1,238 @@
-"use client"
+"use client";
 
-import { useMemo } from 'react'
+import { useEffect, useState } from "react";
+import dynamic from "next/dynamic";
 import {
-  ScatterChart,
-  Scatter,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  ResponsiveContainer,
-  ZAxis,
-  Cell,
-} from 'recharts'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart'
-import { Mountain, Info } from 'lucide-react'
-import type { VariantData } from '@/lib/types'
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Mountain, Loader2, AlertCircle, RefreshCw } from "lucide-react";
+import type { VariantData } from "@/lib/types";
+
+// Plotly must be dynamically imported — browser-only
+const Plot = dynamic(() => import("react-plotly.js"), { ssr: false });
 
 interface ActivityLandscapeProps {
-  variants: VariantData[]
+  variants: VariantData[];
+  experimentId: string;
 }
 
-export function ActivityLandscape({ variants }: ActivityLandscapeProps) {
-  // Perform simple dimensionality reduction using mutation count and generation
-  // For a real implementation, you would use PCA or t-SNE
-  const landscapeData = useMemo(() => {
-    if (variants.length === 0) return []
-    
-    // Normalize values for visualization
-    const maxActivity = Math.max(...variants.map(v => v.activityScore))
-    const maxMutations = Math.max(...variants.map(v => v.mutations.length), 1)
-    const maxGen = Math.max(...variants.map(v => v.generation), 1)
-    
-    return variants.map(v => {
-      // Simple 2D projection based on mutations and generation
-      // Add some jitter to avoid overlap
-      const jitterX = (Math.random() - 0.5) * 0.1
-      const jitterY = (Math.random() - 0.5) * 0.1
-      
-      return {
-        id: v.id,
-        variantIndex: v.plasmidVariantIndex,
-        x: (v.mutations.length / maxMutations) + jitterX,
-        y: (v.generation / maxGen) + jitterY,
-        activity: v.activityScore,
-        normalizedActivity: v.activityScore / maxActivity,
-        generation: v.generation,
-        mutations: v.mutations.length,
-      }
-    })
-  }, [variants])
+type Method = "pca" | "tsne" | "umap";
 
-  // Get color based on activity score
-  const getActivityColor = (normalizedActivity: number) => {
-    // Gradient from blue (low) to green (medium) to yellow/red (high)
-    if (normalizedActivity < 0.33) {
-      return `hsl(200, 60%, ${40 + normalizedActivity * 60}%)`
-    } else if (normalizedActivity < 0.66) {
-      return `hsl(${200 - (normalizedActivity - 0.33) * 240}, 60%, 50%)`
-    } else {
-      return `hsl(${120 - (normalizedActivity - 0.66) * 360}, 70%, 50%)`
+interface LandscapeData {
+  x: number[][];
+  y: number[][];
+  z: number[][];
+  scatter_points: { x: number[]; y: number[]; z: number[] };
+  method: Method;
+  variant_count: number;
+}
+
+export function ActivityLandscape({
+  variants,
+  experimentId,
+}: ActivityLandscapeProps) {
+  const [data, setData] = useState<LandscapeData | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [method, setMethod] = useState<Method>("pca");
+
+  const fetchLandscape = async (selectedMethod: Method) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch(
+        `${process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000"}/api/experiments/${experimentId}/landscape?method=${selectedMethod}`,
+        { credentials: "include" },
+      );
+      const json = await res.json();
+      if (!json.success)
+        throw new Error(json.error ?? "Failed to load landscape");
+      setData(json);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Unknown error");
+    } finally {
+      setLoading(false);
     }
-  }
+  };
+
+  useEffect(() => {
+    if (experimentId && variants.length >= 3) {
+      fetchLandscape(method);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [experimentId]);
+
+  const handleMethodChange = (m: Method) => {
+    setMethod(m);
+    fetchLandscape(m);
+  };
 
   if (variants.length === 0) {
     return (
       <Card>
         <CardContent className="py-12 text-center">
           <Mountain className="h-12 w-12 mx-auto text-muted-foreground/50 mb-3" />
-          <p className="text-muted-foreground">No data available for landscape visualization</p>
+          <p className="text-muted-foreground">
+            No data available for landscape visualization
+          </p>
         </CardContent>
       </Card>
-    )
+    );
+  }
+
+  const analysedCount = variants.filter((v) => v.proteinSequence).length;
+  if (analysedCount < 3) {
+    return (
+      <Card>
+        <CardContent className="py-12 text-center">
+          <AlertCircle className="h-12 w-12 mx-auto text-muted-foreground/50 mb-3" />
+          <p className="text-muted-foreground font-medium">
+            Sequence analysis required
+          </p>
+          <p className="text-sm text-muted-foreground mt-1">
+            {analysedCount} of {variants.length} variants have been analysed.
+            Run sequence analysis first.
+          </p>
+        </CardContent>
+      </Card>
+    );
   }
 
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Mountain className="h-5 w-5" />
-          Activity Landscape
-        </CardTitle>
-        <CardDescription>
-          2D projection of variant space with activity scores as color intensity
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="flex items-start gap-2 p-3 rounded-lg bg-muted/50 text-sm">
-          <Info className="h-4 w-4 mt-0.5 text-muted-foreground shrink-0" />
-          <p className="text-muted-foreground">
-            This visualization projects variants into 2D space based on mutation count (X-axis) 
-            and generation (Y-axis). Point color indicates activity score - brighter colors 
-            represent higher activity. For production use, consider implementing PCA or t-SNE 
-            for more accurate sequence-based dimensionality reduction.
-          </p>
-        </div>
-
-        {/* Color legend */}
-        <div className="flex items-center gap-4">
-          <span className="text-sm font-medium">Activity:</span>
-          <div className="flex items-center gap-1">
-            <div className="w-16 h-3 rounded" style={{
-              background: 'linear-gradient(to right, hsl(200, 60%, 40%), hsl(160, 60%, 50%), hsl(80, 70%, 50%), hsl(40, 70%, 50%))'
-            }} />
-            <div className="flex justify-between w-16 text-xs text-muted-foreground">
-              <span>Low</span>
-              <span>High</span>
-            </div>
+        <div className="flex items-center justify-between">
+          <div>
+            <CardTitle className="flex items-center gap-2">
+              <Mountain className="h-5 w-5" />
+              Activity Landscape
+            </CardTitle>
+            <CardDescription>
+              3D topographic surface — peaks represent highly active variants
+            </CardDescription>
           </div>
-        </div>
 
-        <ChartContainer
-          config={{
-            activity: {
-              label: "Activity Score",
-              color: "hsl(160, 60%, 50%)",
-            },
-          }}
-          className="h-[400px]"
-        >
-          <ResponsiveContainer width="100%" height="100%">
-            <ScatterChart margin={{ top: 20, right: 30, bottom: 20, left: 20 }}>
-              <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-              <XAxis 
-                type="number"
-                dataKey="x" 
-                name="Mutation Density"
-                domain={[-0.1, 1.1]}
-                tickFormatter={() => ''}
-                label={{ value: 'Mutation Count (normalized)', position: 'bottom', offset: 0 }}
-                className="text-muted-foreground"
-              />
-              <YAxis 
-                type="number"
-                dataKey="y"
-                name="Generation"
-                domain={[-0.1, 1.1]}
-                tickFormatter={() => ''}
-                label={{ value: 'Generation (normalized)', angle: -90, position: 'insideLeft' }}
-                className="text-muted-foreground"
-              />
-              <ZAxis 
-                type="number" 
-                dataKey="activity" 
-                range={[50, 400]}
-                name="Activity"
-              />
-              <ChartTooltip 
-                content={
-                  <ChartTooltipContent 
-                    formatter={(value, name, item) => {
-                      const payload = item.payload
-                      if (!payload) return [String(value), String(name)]
-                      return [
-                        <div key="tooltip" className="space-y-1">
-                          <div><strong>Variant {payload.variantIndex}</strong></div>
-                          <div>Generation: {payload.generation}</div>
-                          <div>Mutations: {payload.mutations}</div>
-                          <div>Activity: {payload.activity.toFixed(3)}</div>
-                        </div>,
-                        ''
-                      ]
-                    }}
-                  />
-                }
-              />
-              <Scatter 
-                name="Variants" 
-                data={landscapeData}
+          <div className="flex items-center gap-2">
+            {(["pca", "tsne", "umap"] as Method[]).map((m) => (
+              <Button
+                key={m}
+                size="sm"
+                variant={method === m ? "default" : "outline"}
+                onClick={() => handleMethodChange(m)}
+                disabled={loading}
               >
-                {landscapeData.map((entry, index) => (
-                  <Cell 
-                    key={`cell-${index}`} 
-                    fill={getActivityColor(entry.normalizedActivity)}
-                    strokeWidth={1}
-                    stroke="rgba(0,0,0,0.2)"
-                  />
-                ))}
-              </Scatter>
-            </ScatterChart>
-          </ResponsiveContainer>
-        </ChartContainer>
-
-        {/* Summary statistics */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 pt-4 border-t">
-          <div>
-            <p className="text-sm text-muted-foreground">Total Points</p>
-            <p className="text-lg font-bold">{landscapeData.length}</p>
-          </div>
-          <div>
-            <p className="text-sm text-muted-foreground">Generations</p>
-            <p className="text-lg font-bold">
-              {new Set(variants.map(v => v.generation)).size}
-            </p>
-          </div>
-          <div>
-            <p className="text-sm text-muted-foreground">Max Mutations</p>
-            <p className="text-lg font-bold">
-              {Math.max(...variants.map(v => v.mutations.length))}
-            </p>
-          </div>
-          <div>
-            <p className="text-sm text-muted-foreground">Activity Range</p>
-            <p className="text-lg font-bold">
-              {Math.min(...variants.map(v => v.activityScore)).toFixed(2)} - {Math.max(...variants.map(v => v.activityScore)).toFixed(2)}
-            </p>
+                {m.toUpperCase()}
+              </Button>
+            ))}
+            {data && (
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => fetchLandscape(method)}
+                disabled={loading}
+              >
+                <RefreshCw className="h-4 w-4" />
+              </Button>
+            )}
           </div>
         </div>
+      </CardHeader>
+
+      <CardContent>
+        {loading && (
+          <div className="flex items-center justify-center h-64 text-muted-foreground">
+            <Loader2 className="h-6 w-6 animate-spin mr-2" />
+            Computing {method.toUpperCase()} landscape...
+          </div>
+        )}
+
+        {error && !loading && (
+          <div className="flex flex-col items-center justify-center h-40 gap-3">
+            <AlertCircle className="h-8 w-8 text-destructive" />
+            <p className="text-sm text-destructive text-center max-w-md">
+              {error}
+            </p>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => fetchLandscape(method)}
+            >
+              Retry
+            </Button>
+          </div>
+        )}
+
+        {data && !loading && (
+          <>
+            <p className="text-xs text-muted-foreground mb-2">
+              {data.variant_count} variants · {data.method.toUpperCase()}{" "}
+              projection
+            </p>
+            <Plot
+              data={[
+                {
+                  type: "surface" as const,
+                  x: data.x,
+                  y: data.y,
+                  z: data.z,
+                  colorscale: "Viridis",
+                  colorbar: { title: { text: "Activity" } },
+                  opacity: 0.85,
+                  contours: {
+                    z: {
+                      show: true,
+                      usecolormap: true,
+                      project: { z: true },
+                    },
+                  } as any,
+                },
+                {
+                  type: "scatter3d" as const,
+                  x: data.scatter_points.x,
+                  y: data.scatter_points.y,
+                  z: data.scatter_points.z,
+                  mode: "markers" as const,
+                  marker: {
+                    size: 3,
+                    color: data.scatter_points.z,
+                    colorscale: "Viridis",
+                    opacity: 0.9,
+                  },
+                  name: "Variants",
+                },
+              ]}
+              layout={{
+                autosize: true,
+                height: 560,
+                scene: {
+                  xaxis: { title: { text: "PC1" } },
+                  yaxis: { title: { text: "PC2" } },
+                  zaxis: { title: { text: "Activity Score" } },
+                  camera: { eye: { x: 1.5, y: 1.5, z: 1.2 } },
+                },
+                margin: { l: 0, r: 0, t: 0, b: 0 },
+                paper_bgcolor: "rgba(0,0,0,0)",
+                plot_bgcolor: "rgba(0,0,0,0)",
+              }}
+              config={{ responsive: true, displayModeBar: true }}
+              style={{ width: "100%" }}
+            />
+          </>
+        )}
+
+        {!data && !loading && !error && (
+          <div className="flex items-center justify-center h-40">
+            <p className="text-muted-foreground text-sm">
+              Click a method above to compute the landscape
+            </p>
+          </div>
+        )}
       </CardContent>
     </Card>
-  )
+  );
 }
