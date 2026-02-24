@@ -1,23 +1,25 @@
 """
 Migration script: adds Protein_Sequence column to activity_measurements.
 
-Because the assembled plasmid sequences can start at any rotational position
+Because assembled plasmid sequences can start at any rotational position
 (circular assembly ambiguity), fixed WT coordinates don't work for every
 variant. Instead, for each variant we:
-  1. Concatenate the sequence with itself (handles circularity).
+  1. Concatenate the sequence with itself to expose wraparound ORFs.
   2. Find the longest ORF across all 6 reading frames.
   3. Translate and store it as the protein sequence.
 
-This mirrors what plasmid_validation.py does when searching circular plasmids.
+This mirrors the circular search strategy in plasmid_validation.py.
 
 Usage:
-    python analysis/add_protein_sequences.py
+    python analysis/translate_variants.py
 """
 
 import os
 import sqlite3
 
-# ── codon table (matches sequence_tools.py) ───────────────────────────────────
+# ── codon table ───────────────────────────────────────────────────────────────
+# duplicated from sequence_tools.py so this script runs standalone without
+# requiring the full Flask app context; both tables must stay in sync
 
 CODON_TABLE = {
     "TTT": "F", "TTC": "F", "TTA": "L", "TTG": "L",
@@ -43,6 +45,8 @@ def translate_dna(seq: str) -> str:
     aa = []
     for i in range(0, len(seq) - 2, 3):
         codon = seq[i:i + 3]
+        # codons containing 'N' (ambiguous bases) translate to 'X' rather
+        # than raising an error — consistent with sequence_tools.py behaviour
         aa.append(CODON_TABLE.get(codon, "X"))
     return "".join(aa)
 
@@ -59,10 +63,16 @@ def longest_orf_in_circular(seq: str, min_aa: int = 200) -> str:
     (stop codon stripped), or empty string if none found above min_aa.
     """
     seq = seq.upper()
-    circular = seq + seq           # doubles the sequence to capture wraparound ORFs
+
+    # doubling the sequence exposes ORFs that cross the assembly start point —
+    # a necessary step because circular plasmid assemblies can begin at any
+    # position in the circle, splitting the gene across the start/end boundary
+    circular = seq + seq
     rc_circular = reverse_complement(seq) + reverse_complement(seq)
 
     best_protein = ""
+    # initialise best_len to min_aa so only ORFs above the threshold are kept,
+    # which filters out short non-specific ORFs in the vector backbone
     best_len = min_aa
 
     for search_seq in (circular, rc_circular):
@@ -71,6 +81,7 @@ def longest_orf_in_circular(seq: str, min_aa: int = 200) -> str:
             i = 0
             while i < len(protein):
                 if protein[i] == "M":
+                    # locate the next stop codon; if none found, take to end of frame
                     j = protein.find("*", i)
                     end = j if j != -1 else len(protein)
                     orf_len = end - i
@@ -96,7 +107,8 @@ def main():
     with sqlite3.connect(db_path) as conn:
         cur = conn.cursor()
 
-        # add column if missing
+        # PRAGMA table_info is used rather than a SELECT to avoid touching
+        # data — a lightweight schema inspection that works on any SQLite version
         cur.execute('PRAGMA table_info("activity_measurements")')
         cols = [row[1] for row in cur.fetchall()]
         if "Protein_Sequence" not in cols:
@@ -133,7 +145,7 @@ def main():
     print(f"  No ORF  : {short}")
     print(f"  Errors  : {failed}")
 
-    # quick sanity check
+    # sanity check — confirm sequences start with M and have plausible length
     print("\nSample protein sequences:")
     with sqlite3.connect(db_path) as conn:
         rows = conn.execute(
