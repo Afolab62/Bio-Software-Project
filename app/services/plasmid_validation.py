@@ -444,9 +444,6 @@ def find_wt_in_plasmid(
       - "alignment": Smith–Waterman passes identity+coverage (handles indels)
       - "none": no candidate met thresholds
     """
-    # If no codon table is provided, default to the standard genetic code.
-    # This prevents downstream translation from crashing and keeps behaviour
-    # consistent between tests, CLI usage, and future web routes.
     # if no codon table is provided, default to the standard genetic code —
     # keeps behaviour consistent between tests, CLI usage, and web routes
     if codon_table is None:
