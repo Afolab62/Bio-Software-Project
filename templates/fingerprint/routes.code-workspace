@@ -1,0 +1,13 @@
+{
+	"folders": [
+		{
+			"path": "../../../../munaberhe_fingerprint_bundle/app/routes"
+		},
+		{
+			"path": "../../../../munaberhe_fingerprint_bundle/app/services"
+		},
+		{
+			"path": "../../../../munaberhe_fingerprint_bundle/app/templates"
+		}
+	]
+}

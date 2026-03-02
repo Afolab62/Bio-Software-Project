@@ -1,0 +1,210 @@
+{% extends "base.html" %}
+{% block title %}Mutation Fingerprints — Select Variant{% endblock %}
+
+{% block head_extra %}
+<style>
+  .fp-index {
+    max-width: 960px;
+    margin: 36px auto;
+    padding: 0 20px;
+    font-family: "Inter", sans-serif;
+  }
+  .fp-index h1 {
+    font-size: 1.3rem;
+    font-weight: 600;
+    color: #38bdf8;
+    margin-bottom: 6px;
+  }
+  .fp-index p.sub {
+    font-size: 0.78rem;
+    color: #4a6080;
+    font-family: "JetBrains Mono", monospace;
+    margin-bottom: 22px;
+  }
+  .fp-search {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+  }
+  .fp-search input {
+    background: #111827;
+    border: 1px solid #1e3050;
+    border-radius: 6px;
+    padding: 8px 14px;
+    font-size: 0.82rem;
+    color: #d1dce8;
+    font-family: "JetBrains Mono", monospace;
+    outline: none;
+    transition: border-color 0.15s;
+  }
+  #searchBox { flex: 1; min-width: 220px; }
+  #uniprotBox { width: 180px; }
+  .fp-search input:focus { border-color: #38bdf8; }
+  .fp-search input::placeholder { color: #4a6080; }
+
+  .fp-table-wrap {
+    background: #111827;
+    border: 1px solid #1e3050;
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.82rem;
+  }
+  thead {
+    background: #162032;
+    border-bottom: 1px solid #1e3050;
+  }
+  th {
+    padding: 10px 14px;
+    text-align: left;
+    font-size: 0.65rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #4a6080;
+    font-family: "JetBrains Mono", monospace;
+    cursor: pointer;
+    user-select: none;
+    white-space: nowrap;
+  }
+  th:hover { color: #38bdf8; }
+  th .sort-icon { margin-left: 4px; opacity: 0.4; }
+  th.sorted .sort-icon { opacity: 1; color: #38bdf8; }
+  tbody tr {
+    border-bottom: 1px solid #1e3050;
+    cursor: pointer;
+    transition: background 0.12s;
+  }
+  tbody tr:last-child { border-bottom: none; }
+  tbody tr:hover { background: #162032; }
+  td {
+    padding: 10px 14px;
+    color: #d1dce8;
+    font-family: "JetBrains Mono", monospace;
+  }
+  td.vid { color: #38bdf8; font-weight: 500; }
+  td.score { color: #4ade80; }
+  .gen-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 0.68rem;
+    font-weight: 500;
+  }
+  .fp-empty {
+    padding: 36px;
+    text-align: center;
+    color: #4a6080;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 0.78rem;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="fp-index">
+  <h1>Part 4a — Mutation Fingerprint</h1>
+  <p class="sub">
+    Select a variant to view its 3D mutation map. Enter any UniProt ID to test
+    structure lookup; the app will still render the view if structure mapping is unavailable.
+  </p>
+
+  <div class="fp-search">
+    <input
+      type="text"
+      id="searchBox"
+      placeholder="Search by variant ID, generation or activity..."
+      oninput="filterTable()"
+    >
+    <input
+      type="text"
+      id="uniprotBox"
+      placeholder="UniProt ID (optional)"
+      value="{{ uniprot_id or '' }}"
+    >
+  </div>
+
+  <div class="fp-table-wrap">
+    <table id="fpTable">
+      <thead>
+        <tr>
+          <th onclick="sortTable(0)" id="th0">Variant ID <span class="sort-icon">↕</span></th>
+          <th onclick="sortTable(1)" id="th1">Generation <span class="sort-icon">↕</span></th>
+          <th onclick="sortTable(2)" id="th2">Parent ID <span class="sort-icon">↕</span></th>
+          <th onclick="sortTable(3)" id="th3">Activity Score <span class="sort-icon">↕</span></th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody id="fpTbody">
+        {% if variants %}
+          {% for v in variants %}
+          <tr onclick="openVariant({{ v.variant_id }})">
+            <td class="vid">{{ v.variant_id }}</td>
+            <td>
+              <span class="gen-badge" style="
+                background: {{ ['#a78bfa','#fb923c','#22d3ee','#4ade80','#f472b6',
+                                '#facc15','#34d399','#60a5fa','#fb7185','#e879f9',
+                                '#94a3b8'][v.generation % 11] }}22;
+                color:      {{ ['#a78bfa','#fb923c','#22d3ee','#4ade80','#f472b6',
+                                '#facc15','#34d399','#60a5fa','#fb7185','#e879f9',
+                                '#94a3b8'][v.generation % 11] }};">
+                Gen {{ v.generation }}
+              </span>
+            </td>
+            <td>{{ v.parent_variant_id if v.parent_variant_id >= 0 else '—' }}</td>
+            <td class="score">{{ '%.4f'|format(v.activity_score) if v.activity_score is not none else '—' }}</td>
+            <td style="text-align:right;color:#4a6080;font-size:0.75rem">View →</td>
+          </tr>
+          {% endfor %}
+        {% else %}
+          <tr><td colspan="5" class="fp-empty">No variants found in the database.</td></tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts_extra %}
+<script>
+function filterTable() {
+  const q = document.getElementById('searchBox').value.toLowerCase();
+  document.querySelectorAll('#fpTbody tr').forEach(row => {
+    row.style.display = row.textContent.toLowerCase().includes(q) ? '' : 'none';
+  });
+}
+
+let sortDir = {};
+function sortTable(col) {
+  sortDir[col] = !(sortDir[col]);
+  const asc = sortDir[col];
+  const tbody = document.getElementById('fpTbody');
+  const rows = Array.from(tbody.querySelectorAll('tr'));
+
+  rows.sort((a, b) => {
+    const av = a.cells[col]?.textContent.trim() ?? '';
+    const bv = b.cells[col]?.textContent.trim() ?? '';
+    const an = parseFloat(av), bn = parseFloat(bv);
+    if (!isNaN(an) && !isNaN(bn)) return asc ? an - bn : bn - an;
+    return asc ? av.localeCompare(bv) : bv.localeCompare(av);
+  });
+
+  document.querySelectorAll('th').forEach(th => th.classList.remove('sorted'));
+  document.getElementById(`th${col}`).classList.add('sorted');
+  rows.forEach(r => tbody.appendChild(r));
+}
+
+function openVariant(variantId) {
+  const uniprot = document.getElementById('uniprotBox').value.trim();
+  let url = `{{ url_for('fingerprint.show', variant_id=0) }}`.replace('/0', `/${variantId}`);
+  if (uniprot) {
+    url += `?uniprot_id=${encodeURIComponent(uniprot)}`;
+  }
+  window.location = url;
+}
+</script>
+{% endblock %}

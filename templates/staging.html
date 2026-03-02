@@ -1,0 +1,249 @@
+{% extends "base.html" %}
+{% block title %}Stage WT Experiment{% endblock %}
+
+{% block head_extra %}
+<style>
+  .stage-page {
+    max-width: 960px;
+    margin: 0 auto;
+  }
+  .stage-grid {
+    display: grid;
+    gap: 16px;
+  }
+  .stage-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+    box-shadow: 0 10px 30px rgba(31, 47, 86, 0.08);
+  }
+  .stage-card h1,
+  .stage-card h2 {
+    margin: 0 0 8px;
+  }
+  .stage-card h1 {
+    font-size: 1.5rem;
+  }
+  .stage-card h2 {
+    font-size: 1rem;
+  }
+  .stage-card p {
+    margin: 0 0 14px;
+    color: var(--muted);
+  }
+  .stage-field {
+    display: grid;
+    gap: 8px;
+    margin-bottom: 14px;
+  }
+  .stage-label {
+    font-weight: 700;
+    font-size: 0.9rem;
+  }
+  .stage-input,
+  .stage-textarea {
+    width: 100%;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 10px 12px;
+    font: inherit;
+    background: #fff;
+    color: var(--text);
+  }
+  .stage-textarea {
+    min-height: 240px;
+    resize: vertical;
+    font-family: "SFMono-Regular", Menlo, Monaco, Consolas, monospace;
+    font-size: 0.86rem;
+    line-height: 1.45;
+  }
+  .stage-row {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+  .stage-check {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    font-size: 0.9rem;
+  }
+  .stage-actions {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+  .stage-secondary {
+    display: inline-block;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 14px;
+    background: #fff;
+    color: var(--text);
+    cursor: pointer;
+    font: inherit;
+  }
+  .stage-kv {
+    display: grid;
+    grid-template-columns: minmax(180px, 240px) 1fr;
+    gap: 8px 14px;
+    margin-top: 12px;
+  }
+  .stage-kv div:nth-child(odd) {
+    font-weight: 700;
+  }
+  .stage-pill {
+    display: inline-block;
+    padding: 4px 8px;
+    border-radius: 999px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  .stage-pill.ok {
+    background: #ecfdf3;
+    color: #027a48;
+  }
+  .stage-pill.err {
+    background: #fef3f2;
+    color: #b42318;
+  }
+  .stage-code {
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-family: "SFMono-Regular", Menlo, Monaco, Consolas, monospace;
+    font-size: 0.82rem;
+  }
+  @media (max-width: 700px) {
+    .stage-kv {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="stage-page">
+  <div class="stage-grid">
+    <section class="stage-card">
+      <h1>Stage WT Experiment</h1>
+      <p>
+        Load the wild-type protein from UniProt, validate that your plasmid FASTA
+        encodes it, and persist that staging record for the mutation fingerprint.
+      </p>
+
+      <form method="post" enctype="multipart/form-data">
+        <div class="stage-field">
+          <label class="stage-label" for="accession">UniProt accession</label>
+          <input
+            class="stage-input"
+            id="accession"
+            name="accession"
+            value="{{ accession }}"
+            placeholder="O34996"
+            autocomplete="off"
+            required
+          >
+        </div>
+
+        <div class="stage-field">
+          <label class="stage-label" for="plasmid_file">Upload FASTA file</label>
+          <input id="plasmid_file" name="plasmid_file" type="file" accept=".fa,.fasta,.txt">
+        </div>
+
+        <div class="stage-field">
+          <label class="stage-label" for="plasmid_fasta">Plasmid FASTA</label>
+          <textarea
+            class="stage-textarea"
+            id="plasmid_fasta"
+            name="plasmid_fasta"
+            placeholder=">plasmid&#10;ATG..."
+          >{{ plasmid_fasta }}</textarea>
+        </div>
+
+        <div class="stage-row">
+          <label class="stage-check" for="fetch_features">
+            <input
+              id="fetch_features"
+              name="fetch_features"
+              type="checkbox"
+              value="1"
+              {% if fetch_features %}checked{% endif %}
+            >
+            Fetch UniProt features
+          </label>
+        </div>
+
+        <div class="stage-actions">
+          <button type="submit">Validate and save</button>
+          <button type="button" class="stage-secondary" onclick="loadExample()">Load local example</button>
+          <a href="{{ url_for('fingerprint.index') }}">Open mutation fingerprint</a>
+        </div>
+      </form>
+    </section>
+
+    {% if result %}
+    <section class="stage-card">
+      <h2>Validation result</h2>
+
+      {% if result.error %}
+      <p><span class="stage-pill err">Error</span></p>
+      <div class="stage-code">{{ result.error }}</div>
+      {% else %}
+      {% set validation = result.validation or {} %}
+      <p>
+        <span class="stage-pill {% if validation.is_valid %}ok{% else %}err{% endif %}">
+          {% if validation.is_valid %}Valid{% else %}Invalid{% endif %}
+        </span>
+      </p>
+      <div class="stage-kv">
+        <div>Accession</div>
+        <div>{{ result.accession }}</div>
+        <div>Match type</div>
+        <div>{{ validation.match_type or "n/a" }}</div>
+        <div>Status</div>
+        <div>{{ validation.message or "No validation details returned." }}</div>
+        <div>Gene length</div>
+        <div>{{ validation.gene_nt_len or "n/a" }} nt</div>
+        <div>Protein length</div>
+        <div>{{ validation.protein_len or "n/a" }} aa</div>
+        <div>Start nucleotide</div>
+        <div>{{ validation.start_nt if validation.start_nt is not none else "n/a" }}</div>
+        <div>Strand / frame</div>
+        <div>
+          {{ validation.strand or "n/a" }} /
+          {{ validation.frame if validation.frame is not none else "n/a" }}
+        </div>
+        <div>Wraps origin</div>
+        <div>{{ "yes" if validation.wraps_origin else "no" }}</div>
+        <div>Features loaded</div>
+        <div>{{ result.features|length if result.features is not none else 0 }}</div>
+      </div>
+      {% if validation.is_valid %}
+      <p style="margin-top:14px">
+        The active WT record is now stored in the app database and will be used by
+        <a href="{{ url_for('fingerprint.index') }}">the fingerprint view</a>.
+      </p>
+      {% endif %}
+      {% endif %}
+    </section>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts_extra %}
+<script>
+async function loadExample() {
+  const response = await fetch('{{ url_for("staging.staging_example") }}');
+  const payload = await response.json();
+  if (payload.fasta) {
+    document.getElementById('plasmid_fasta').value = payload.fasta;
+  }
+}
+</script>
+{% endblock %}

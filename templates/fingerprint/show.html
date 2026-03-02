@@ -1,0 +1,420 @@
+{% extends "base.html" %}
+{% block title %}Variant {{ variant_id }} — 3D Mutation Fingerprint{% endblock %}
+
+{% block head_extra %}
+<script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+<style>
+  main { width: 100%; margin: 0; }
+  .fp-page {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    background: #0b0f1a;
+    color: #d1dce8;
+    font-family: "Inter", sans-serif;
+  }
+  .fp-bar {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 20px;
+    background: #111827;
+    border-bottom: 1px solid #1e3050;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  .fp-bar-left h2 {
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: #38bdf8;
+    margin: 0;
+  }
+  .fp-bar-left p {
+    font-size: 0.65rem;
+    color: #4a6080;
+    font-family: "JetBrains Mono", monospace;
+    margin: 2px 0 0;
+  }
+  .fp-chips { display: flex; gap: 7px; flex-wrap: wrap; }
+  .fp-chip {
+    background: #162032;
+    border: 1px solid #1e3050;
+    border-radius: 20px;
+    padding: 3px 11px;
+    font-size: 0.68rem;
+    font-family: "JetBrains Mono", monospace;
+    color: #4a6080;
+    white-space: nowrap;
+  }
+  .fp-chip b { color: #38bdf8; font-weight: 500; }
+  .fp-back {
+    font-size: 0.72rem;
+    color: #4a6080;
+    text-decoration: none;
+    border: 1px solid #1e3050;
+    border-radius: 4px;
+    padding: 4px 10px;
+    transition: color 0.15s, border-color 0.15s;
+  }
+  .fp-back:hover { color: #38bdf8; border-color: #38bdf8; }
+  .fp-body {
+    flex: 1;
+    display: flex;
+    overflow: hidden;
+    min-height: 0;
+  }
+  #fpPlot3d {
+    flex: 1;
+    min-width: 0;
+    min-height: 0;
+  }
+  .fp-sidebar {
+    width: 230px;
+    flex-shrink: 0;
+    background: #111827;
+    border-left: 1px solid #1e3050;
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+  }
+  .fp-section {
+    padding: 13px 15px;
+    border-bottom: 1px solid #1e3050;
+  }
+  .fp-section h3 {
+    font-size: 0.62rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: #4a6080;
+    font-family: "JetBrains Mono", monospace;
+    margin: 0 0 10px;
+  }
+  .fp-hover-box {
+    background: #162032;
+    border: 1px solid #1e3050;
+    border-radius: 6px;
+    padding: 10px 11px;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 0.67rem;
+    color: #4a6080;
+    min-height: 70px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    line-height: 1.6;
+  }
+  .fp-hover-box.active {
+    color: #d1dce8;
+    align-items: flex-start;
+    justify-content: flex-start;
+    text-align: left;
+  }
+  .fh-title { font-size: 0.8rem; font-weight: 500; margin-bottom: 5px; }
+  .fh-row { display: flex; justify-content: space-between; gap: 8px; margin-top: 2px; }
+  .fh-key { color: #4a6080; }
+  .gen-row {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    padding: 5px 7px;
+    border-radius: 5px;
+    margin-bottom: 2px;
+    cursor: pointer;
+    border: 1px solid transparent;
+    transition: background 0.12s, opacity 0.12s;
+    user-select: none;
+  }
+  .gen-row:hover { background: rgba(255,255,255,0.04); }
+  .gen-row.off { opacity: 0.22; }
+  .gen-swatch {
+    width: 13px;
+    height: 13px;
+    border-radius: 3px;
+    flex-shrink: 0;
+  }
+  .gen-info { flex: 1; min-width: 0; }
+  .gen-label { font-size: 0.76rem; font-weight: 500; color: #d1dce8; line-height: 1.2; }
+  .gen-count { font-size: 0.62rem; font-family: "JetBrains Mono", monospace; color: #4a6080; margin-top: 1px; }
+  .gen-bar { margin-top: 3px; height: 3px; background: #1e3050; border-radius: 2px; overflow: hidden; }
+  .gen-bar-fill { height: 100%; border-radius: 2px; }
+  .fp-btn-reset {
+    display: block;
+    width: calc(100% - 30px);
+    margin: 10px 15px 4px;
+    padding: 6px;
+    background: #162032;
+    border: 1px solid #1e3050;
+    border-radius: 5px;
+    color: #4a6080;
+    font-size: 0.7rem;
+    font-family: "JetBrains Mono", monospace;
+    cursor: pointer;
+    text-align: center;
+    transition: all 0.14s;
+  }
+  .fp-btn-reset:hover { border-color: #38bdf8; color: #38bdf8; }
+  .marker-key { display: flex; align-items: center; gap: 8px; padding: 4px 0; }
+  .mk-sym { font-size: 1rem; width: 18px; text-align: center; flex-shrink: 0; }
+  .mk-label { font-size: 0.73rem; color: #d1dce8; }
+  .fp-type-btn {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 8px;
+    margin-bottom: 4px;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+    text-align: left;
+  }
+  .fp-type-btn:hover {
+    background: rgba(255,255,255,0.04);
+    border-color: #1e3050;
+  }
+  .fp-type-btn.active {
+    background: #162032;
+    border-color: #38bdf8;
+  }
+  .fp-type-reset {
+    display: block;
+    width: 100%;
+    margin-top: 6px;
+    padding: 6px;
+    background: #162032;
+    border: 1px solid #1e3050;
+    border-radius: 5px;
+    color: #4a6080;
+    font-size: 0.7rem;
+    font-family: "JetBrains Mono", monospace;
+    cursor: pointer;
+    text-align: center;
+    transition: all 0.14s;
+  }
+  .fp-type-reset:hover { border-color: #38bdf8; color: #38bdf8; }
+  .plddt-key {
+    margin-top: 9px;
+    font-size: 0.62rem;
+    font-family: "JetBrains Mono", monospace;
+    color: #4a6080;
+    line-height: 1.8;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="fp-page">
+  <div class="fp-bar">
+    <div class="fp-bar-left">
+      <h2>Variant {{ variant_id }} — 3D Mutation Map</h2>
+      <p>
+        UniProt: {{ uniprot_id }} · Structure: {{ structure_source }} ·
+        Generation {{ generation }} · Parent: Variant {{ parent_id }}
+      </p>
+    </div>
+    <div class="fp-chips">
+      <div class="fp-chip"><b>{{ num_mutations }}</b> mutations</div>
+      <div class="fp-chip"><b>{{ num_nonsynonymous }}</b> non-syn</div>
+      <div class="fp-chip"><b>{{ num_synonymous }}</b> synonymous</div>
+    </div>
+    <a href="{{ url_for('fingerprint.index', uniprot_id=uniprot_id) }}" class="fp-back">← All variants</a>
+  </div>
+
+  <div class="fp-body">
+    <div id="fpPlot3d"></div>
+    <div class="fp-sidebar">
+      <div class="fp-section">
+        <h3>Selected residue</h3>
+        <div class="fp-hover-box" id="fpHoverBox">
+          Hover a mutation to see details
+        </div>
+      </div>
+
+      <div class="fp-section">
+        <h3>Generation introduced</h3>
+        <div id="fpGenLegend"></div>
+        <button class="fp-btn-reset" onclick="fpResetGens()">Show all</button>
+      </div>
+
+      <div class="fp-section">
+        <h3>Marker key</h3>
+        <button type="button" class="fp-type-btn" id="fpTypeNon" onclick="fpSetMutationType('non-synonymous')">
+          <span class="mk-sym" style="color:#f87171">◆</span>
+          <span class="mk-label">Non-synonymous</span>
+        </button>
+        <button type="button" class="fp-type-btn" id="fpTypeSyn" onclick="fpSetMutationType('synonymous')">
+          <span class="mk-sym" style="color:#94a3b8">●</span>
+          <span class="mk-label">Synonymous</span>
+        </button>
+        <button type="button" class="fp-type-reset" onclick="fpResetMutationTypes()">Show both</button>
+        <div class="marker-key">
+          <span class="mk-sym" style="color:#4a6080">Filter:</span>
+          <span class="mk-label">click a type to isolate it</span>
+        </div>
+        <div class="marker-key">
+          <span class="mk-sym" style="color:#14b8a6">-</span>
+          <span class="mk-label">Exonuclease region</span>
+        </div>
+        <div class="marker-key">
+          <span class="mk-sym" style="color:#f59e0b">-</span>
+          <span class="mk-label">Polymerase core</span>
+        </div>
+        <div class="marker-key">
+          <span class="mk-sym" style="color:#f43f5e">x</span>
+          <span class="mk-label">Catalytic site (if annotated)</span>
+        </div>
+        <div class="plddt-key">
+          Base backbone = confidence<br>
+          Colored overlays = functional regions<br>
+          <span style="color:#2563eb">■</span> ≥90 very high<br>
+          <span style="color:#38bdf8">■</span> 70–90 high<br>
+          <span style="color:#facc15">■</span> 50–70 low<br>
+          <span style="color:#f87171">■</span> &lt;50 very low
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts_extra %}
+<script>
+const FIGURE = {{ plot_json | safe }};
+const GEN_COUNTS = {{ gen_counts_json | safe }};
+
+const GEN_COLORS = {
+  1:'#a78bfa', 2:'#fb923c', 3:'#22d3ee', 4:'#4ade80',
+  5:'#f472b6', 6:'#facc15', 7:'#34d399', 8:'#60a5fa',
+  9:'#fb7185', 10:'#e879f9'
+};
+const MAX_COUNT = Math.max(...Object.values(GEN_COUNTS), 1);
+
+Plotly.react('fpPlot3d', FIGURE.data, FIGURE.layout, {
+  responsive: true,
+  displayModeBar: true,
+  modeBarButtonsToRemove: ['select2d', 'lasso2d'],
+  toImageButtonOptions: {
+    format: 'png',
+    filename: 'variant_{{ variant_id }}_3d_fingerprint',
+    scale: 2,
+  },
+  displaylogo: false,
+});
+
+document.getElementById('fpPlot3d').on('plotly_hover', evt => {
+  const pt = evt.points[0];
+  if (!pt.customdata) return;
+  const [change, pos, wt, mut, type, gen, plddt] = pt.customdata;
+  const col = GEN_COLORS[gen] || '#94a3b8';
+  const box = document.getElementById('fpHoverBox');
+  box.className = 'fp-hover-box active';
+  box.innerHTML = `
+    <div style="width:100%">
+      <div class="fh-title" style="color:${col}">${change}</div>
+      <div class="fh-row"><span class="fh-key">Position</span><span>${pos}</span></div>
+      <div class="fh-row"><span class="fh-key">Change</span><span>${wt} -> ${mut}</span></div>
+      <div class="fh-row"><span class="fh-key">Type</span><span>${type}</span></div>
+      <div class="fh-row"><span class="fh-key">Generation</span>
+        <span style="color:${col}">Gen ${gen}</span></div>
+      <div class="fh-row"><span class="fh-key">pLDDT</span><span>${plddt}</span></div>
+    </div>`;
+});
+
+document.getElementById('fpPlot3d').on('plotly_unhover', () => {
+  const box = document.getElementById('fpHoverBox');
+  box.className = 'fp-hover-box';
+  box.textContent = 'Hover a mutation to see details';
+});
+
+function fpBuildLegend() {
+  const el = document.getElementById('fpGenLegend');
+  el.innerHTML = '';
+  for (let g = 1; g <= 10; g++) {
+    const col = GEN_COLORS[g];
+    const count = GEN_COUNTS[g] || 0;
+    const pct = (count / MAX_COUNT * 100).toFixed(0);
+    const row = document.createElement('div');
+    row.className = 'gen-row';
+    row.id = `fpGen${g}`;
+    row.onclick = () => fpToggleGen(g);
+    row.innerHTML = `
+      <div class="gen-swatch" style="background:${col}"></div>
+      <div class="gen-info">
+        <div class="gen-label">Generation ${g}</div>
+        <div class="gen-count">${count} mutation${count !== 1 ? 's' : ''}</div>
+        <div class="gen-bar">
+          <div class="gen-bar-fill" style="width:${pct}%;background:${col}"></div>
+        </div>
+      </div>`;
+    el.appendChild(row);
+  }
+}
+
+const genTraceIndex = {};
+const mutationTraceIndices = [];
+let activeMutationType = 'all';
+FIGURE.data.forEach((trace, i) => {
+  const meta = trace.meta || {};
+  if (meta.trace_kind !== 'mutation') return;
+  const gen = parseInt(meta.generation);
+  if (!genTraceIndex[gen]) genTraceIndex[gen] = [];
+  genTraceIndex[gen].push(i);
+  mutationTraceIndices.push(i);
+});
+
+function fpToggleGen(g) {
+  const indices = genTraceIndex[g];
+  if (!indices || !indices.length) return;
+  const row = document.getElementById(`fpGen${g}`);
+  row.classList.toggle('off');
+  fpApplyMutationFilters();
+}
+
+function fpResetGens() {
+  document.querySelectorAll('.gen-row').forEach(r => r.classList.remove('off'));
+  fpApplyMutationFilters();
+}
+
+function fpSyncTypeButtons() {
+  const non = document.getElementById('fpTypeNon');
+  const syn = document.getElementById('fpTypeSyn');
+  non.classList.toggle('active', activeMutationType === 'non-synonymous');
+  syn.classList.toggle('active', activeMutationType === 'synonymous');
+}
+
+function fpApplyMutationFilters() {
+  const visibility = mutationTraceIndices.map(idx => {
+    const trace = FIGURE.data[idx];
+    const meta = trace.meta || {};
+    const gen = parseInt(meta.generation);
+    const genRow = document.getElementById(`fpGen${gen}`);
+    const generationHidden = genRow && genRow.classList.contains('off');
+    if (generationHidden) return false;
+    if (activeMutationType === 'all') return true;
+    return meta.mutation_type === activeMutationType;
+  });
+  if (mutationTraceIndices.length) {
+    Plotly.restyle('fpPlot3d', 'visible', visibility, mutationTraceIndices);
+  }
+  fpSyncTypeButtons();
+}
+
+function fpSetMutationType(type) {
+  activeMutationType = type;
+  fpApplyMutationFilters();
+}
+
+function fpResetMutationTypes() {
+  activeMutationType = 'all';
+  fpApplyMutationFilters();
+}
+
+fpBuildLegend();
+fpApplyMutationFilters();
+</script>
+{% endblock %}
