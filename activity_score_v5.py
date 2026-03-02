@@ -110,19 +110,4 @@ def compute_activity_score(df):
 
 	return out
 
-path = '/Users/minaal/Downloads/example.tsv'
-df = pd.read_csv(path, sep = '\t')
-x = compute_activity_score(df)
-print(x)
-                        
-top_10 = x.sort_values(
-        by = 'activity_score',  
-        ascending = False
-).head(10)      
-        
-print(top_10)   
-        
-
-
-
 
