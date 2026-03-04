@@ -230,9 +230,14 @@ class ExperimentalDataParser:
                 used_originals.add(orig)
                 assigned_canonicals.add(canonical)
 
-        # Pass 2 — positional fallback for leftover columns / fields
+        # Pass 2 — positional fallback ONLY for unmatched *required* fields.
+        # Optional fields (e.g. parent_plasmid_variant) are intentionally excluded:
+        # if they can't be found by name they should stay absent, not silently
+        # consume the first unrecognised / extra-metadata column.
         remaining_originals = [c for c in df_columns if c not in used_originals]
-        remaining_canonicals = [f for f in self._all_field_names if f not in assigned_canonicals]
+        remaining_canonicals = [
+            f for f in self._required_field_names if f not in assigned_canonicals
+        ]
         for orig, canonical in zip(remaining_originals, remaining_canonicals):
             mapping[orig] = canonical
             assigned_canonicals.add(canonical)

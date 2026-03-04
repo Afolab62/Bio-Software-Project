@@ -370,10 +370,19 @@ def upload_experimental_data(experiment_id: str):
                 qc_message=None
             )
             
-            # Store extra metadata
+            # Store extra metadata — coerce NaN/inf to None so the dict is
+            # always JSON-serialisable before SQLAlchemy writes it to JSONB.
             if metadata_columns:
-                metadata = {col: variant_data.get(col) for col in metadata_columns if col in variant_data}
-                variant.extra_metadata = metadata
+                import math as _math
+                metadata = {}
+                for col in metadata_columns:
+                    if col not in variant_data:
+                        continue
+                    val = variant_data[col]
+                    if isinstance(val, float) and (_math.isnan(val) or _math.isinf(val)):
+                        val = None
+                    metadata[col] = val
+                variant.extra_metadata = metadata or None
             
             # Store mutations using relationship (SQLAlchemy will handle variant_id)
             for mut in variant_data.get('mutations', []):

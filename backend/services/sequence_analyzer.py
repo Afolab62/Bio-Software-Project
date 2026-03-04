@@ -179,13 +179,14 @@ def _smith_waterman(seq1: str, seq2: str, match=2, mismatch=-1, gap=-1) -> Tuple
     return max_score, i, max_pos[0]
 
 
-def locate_gene_sw(wt_plasmid_seq: str, wt_protein_seq: str) -> Tuple[str, int, int]:
+def locate_gene_sw(wt_plasmid_seq: str, wt_protein_seq: str) -> Tuple[str, int, int, bool]:
     """
     Use Smith-Waterman alignment to locate the gene encoding wt_protein_seq
     in the plasmid (handles circular DNA by doubling the sequence).
 
-    Returns (gene_dna, gene_start, gene_length) where coordinates are on the
-    original (non-doubled) plasmid.
+    Returns (gene_dna, gene_start, gene_length, is_rc_strand).
+    gene_dna is in 5'->3' coding orientation.
+    gene_start / gene_length are coordinates on the original plus-strand plasmid.
     """
     plasmid = _clean(wt_plasmid_seq)
     protein = _clean(wt_protein_seq)
@@ -198,6 +199,7 @@ def locate_gene_sw(wt_plasmid_seq: str, wt_protein_seq: str) -> Tuple[str, int, 
     best_gene_seq = None
     best_start = 0
     best_length = 0
+    best_is_rc = False
 
     for strand_seq, is_rc in [(extended, False), (_reverse_complement(extended), True)]:
         for frame in range(3):
@@ -207,12 +209,18 @@ def locate_gene_sw(wt_plasmid_seq: str, wt_protein_seq: str) -> Tuple[str, int, 
             if score > best_score:
                 dna_start = frame + start_aa * 3
                 dna_end = frame + end_aa * 3
-                gene_dna = strand_seq[dna_start:dna_end]
+                gene_dna = strand_seq[dna_start:dna_end]  # coding-orientation DNA
 
                 best_score = score
-                best_start = dna_start % L  # normalise to original plasmid coords
+                # When is_rc=True, dna_start is a position in rc(extended).
+                # The equivalent start on the plus-strand extended is (2L - dna_end).
+                if is_rc:
+                    best_start = (2 * L - dna_end) % L
+                else:
+                    best_start = dna_start % L
                 best_length = dna_end - dna_start
                 best_gene_seq = gene_dna
+                best_is_rc = is_rc
 
     min_acceptable = len(protein) * 1.5  # need at least 75% identity
     if best_score < min_acceptable or best_gene_seq is None:
@@ -225,8 +233,9 @@ def locate_gene_sw(wt_plasmid_seq: str, wt_protein_seq: str) -> Tuple[str, int, 
     print(f"  Gene located: start={best_start}, length={best_length}bp ({len(gene_protein)} AA), score={best_score:.0f}")
     print(f"  First 50 AA: {gene_protein[:50]}")
     print(f"  Wraps origin: {best_start + best_length > L}")
+    print(f"  Strand: {'minus (RC)' if best_is_rc else 'plus'}")
 
-    return best_gene_seq, best_start, best_length
+    return best_gene_seq, best_start, best_length, best_is_rc
 
 
 def extract_gene(plasmid_seq: str, gene_start: int, gene_length: int) -> str:
@@ -291,7 +300,7 @@ def identify_mutations(wt_gene_dna: str, var_gene_dna: str) -> List[Dict]:
 
 
 
-def locate_gene_fast(wt_plasmid_seq: str, wt_protein_seq: str) -> Tuple[str, int, int]:
+def locate_gene_fast(wt_plasmid_seq: str, wt_protein_seq: str) -> Tuple[str, int, int, bool]:
     """
     Quickly locate the gene encoding wt_protein_seq in the plasmid.
 
@@ -301,6 +310,10 @@ def locate_gene_fast(wt_plasmid_seq: str, wt_protein_seq: str) -> Tuple[str, int
     2. Match on progressively shorter prefixes (50 → 30 → 15 AA) for
        robustness against occasional leading-residue differences.
     3. Falls back to Smith-Waterman only if no string match is found.
+
+    Returns (gene_dna, gene_start, gene_length, is_rc_strand).
+    gene_dna is always in 5'->3' coding orientation.
+    gene_start / gene_length are coordinates on the original plus-strand plasmid.
     """
     plasmid = _clean(wt_plasmid_seq)
     protein = _clean(wt_protein_seq)
@@ -323,15 +336,23 @@ def locate_gene_fast(wt_plasmid_seq: str, wt_protein_seq: str) -> Tuple[str, int
                 if dna_end > len(strand_seq):
                     continue
 
+                # gene_dna is sliced from strand_seq — already in coding orientation.
                 gene_dna = strand_seq[dna_start:dna_end]
-                gene_start = dna_start % L
+
+                # Map back to plus-strand coordinates on the original plasmid.
+                # When is_rc=True, dna_start is a position in rc(extended).
+                # The equivalent start on the plus-strand extended is (2L - dna_end).
+                if is_rc:
+                    gene_start = (2 * L - dna_end) % L
+                else:
+                    gene_start = dna_start % L
                 gene_length = dna_end - dna_start
 
                 gene_protein = _translate(gene_dna)
                 print(f"  Gene found (prefix={prefix_len}AA, frame={frame}, rc={is_rc}): "
                       f"start={gene_start}, length={gene_length}bp ({len(gene_protein)} AA)")
                 print(f"  First 50 AA: {gene_protein[:50]}")
-                return gene_dna, gene_start, gene_length
+                return gene_dna, gene_start, gene_length, is_rc
 
     # No exact prefix match -- fall back to Smith-Waterman
     print("  Fast search missed -- falling back to Smith-Waterman (this may take ~30s)...")
@@ -342,13 +363,11 @@ class SequenceAnalyzer:
     """
     Analyzes a batch of variant plasmids against a WT reference.
     Called once per experiment via analyze_variant_batch().
-    """
 
-    def __init__(self):
-        self.wt_gene_dna: Optional[str] = None
-        self.wt_protein: Optional[str] = None
-        self.gene_start: Optional[int] = None
-        self.gene_length: Optional[int] = None
+    Intentionally stateless — all data flows through method arguments and
+    local variables.  The module-level singleton is therefore safe for
+    concurrent calls from multiple background threads (one per experiment).
+    """
 
     def analyze_variant_batch(
         self,
@@ -370,23 +389,22 @@ class SequenceAnalyzer:
         print(f"  WT protein length : {len(wt_protein_sequence.strip())} AA")
 
         # -- Step 1: locate gene in WT plasmid --
+        # All gene-location data is kept in local variables so concurrent calls
+        # for different experiments cannot overwrite each other's state.
         print("  Locating WT gene (fast search -> SW fallback)...")
-        wt_gene_dna, gene_start, gene_length = locate_gene_fast(
+        wt_gene_dna, gene_start, gene_length, is_gene_rc = locate_gene_fast(
             wt_plasmid_sequence, wt_protein_sequence
         )
 
-        self.wt_gene_dna = wt_gene_dna
-        self.wt_protein = _translate(wt_gene_dna)
-        self.gene_start = gene_start
-        self.gene_length = gene_length
-
+        wt_protein = _translate(wt_gene_dna)
         plasmid_len = len(_clean(wt_plasmid_sequence))
         wraps = gene_start + gene_length > plasmid_len
 
         print(f"\n{'='*70}")
         print(f"LOCKED GENE COORDINATES")
         print(f"  start      : {gene_start}")
-        print(f"  length     : {gene_length} bp  ({len(self.wt_protein)} AA)")
+        print(f"  length     : {gene_length} bp  ({len(wt_protein)} AA)")
+        print(f"  strand     : {'minus (RC)' if is_gene_rc else 'plus'}")
         print(f"  wraps orig : {wraps}")
         print(f"  plasmid len: {plasmid_len} bp")
         print(f"{'='*70}\n")
@@ -407,13 +425,19 @@ class SequenceAnalyzer:
                     wt_plasmid_sequence, variant['assembled_dna_sequence']
                 )
                 adj_start = (
-                    (gene_start - rotation) % len(_clean(wt_plasmid_sequence))
+                    (gene_start - rotation) % plasmid_len
                     if rotation is not None else gene_start
                 )
 
+                # extract_gene always returns plus-strand DNA for the region.
+                # If the gene is on the minus strand, reverse-complement to get
+                # the 5'->3' coding sequence before translating and comparing.
                 var_gene_dna = extract_gene(
                     variant['assembled_dna_sequence'], adj_start, gene_length
                 )
+                if is_gene_rc:
+                    var_gene_dna = _reverse_complement(var_gene_dna)
+
                 var_protein = _translate(var_gene_dna)
 
                 mutations = identify_mutations(wt_gene_dna, var_gene_dna)
@@ -423,7 +447,7 @@ class SequenceAnalyzer:
                 # codon positions can be off by the indel count.  The aligned
                 # position is used by the 3D fingerprint to correctly map mutations
                 # onto AlphaFold structure residues.
-                aligned_wt, aligned_var = _needleman_wunsch(self.wt_protein, var_protein)
+                aligned_wt, aligned_var = _needleman_wunsch(wt_protein, var_protein)
                 wt_pos_map = _build_wt_position_map(aligned_wt, aligned_var)
                 for m in mutations:
                     m['aligned_position'] = wt_pos_map.get(m['position'], m['position'])
@@ -432,11 +456,11 @@ class SequenceAnalyzer:
                 if i < 3:
                     n_syn = sum(1 for m in mutations if m['mutation_type'] == 'synonymous')
                     n_ns = len(mutations) - n_syn
-                    wt_len = len(self.wt_protein)
+                    wt_len = len(wt_protein)
                     v_len = len(var_protein)
                     matches = sum(
                         1 for j in range(min(wt_len, v_len))
-                        if self.wt_protein[j] == var_protein[j]
+                        if wt_protein[j] == var_protein[j]
                     )
                     pct = matches / min(wt_len, v_len) * 100 if min(wt_len, v_len) else 0
                     print(f"  Variant {i+1}: {len(mutations)} mutations "
@@ -471,5 +495,6 @@ class SequenceAnalyzer:
         return results
 
 
-# Module-level singleton imported by experiments.py
+# Module-level singleton imported by experiments.py.
+# Safe for concurrent use — SequenceAnalyzer holds no mutable instance state.
 sequence_analyzer = SequenceAnalyzer()
