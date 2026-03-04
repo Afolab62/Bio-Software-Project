@@ -45,7 +45,7 @@ Upload a FASTA file (`.fasta`, `.fa`, `.fna`, or `.txt`) containing the circular
 2. Searching for the WT protein as an exact amino-acid substring using fast string matching, backed by a Smith–Waterman local alignment fallback for ambiguous or low-identity sequences.
 3. Checking for an ATG start codon and canonical stop codon at the called ORF boundaries.
 
-The portal reports the validation result (*valid* / *invalid*) along with the identified reading-frame strand, start nucleotide, and any plausibility warnings.
+The portal reports the validation result (_valid_ / _invalid_) along with the identified reading-frame strand, start nucleotide, and any plausibility warnings.
 
 **Step 3 — Review and Submit**  
 Confirm the experiment name, plasmid name, and validation result, then click **Create Experiment**.
@@ -58,23 +58,23 @@ Navigate to an experiment's detail page, then select the **Upload Data** tab.
 
 ### 4.1 Supported File Formats
 
-| Format | Extension |
-|--------|-----------|
-| Tab-separated values | `.tsv`, `.txt` |
-| JSON array of objects | `.json` |
+| Format                | Extension      |
+| --------------------- | -------------- |
+| Tab-separated values  | `.tsv`, `.txt` |
+| JSON array of objects | `.json`        |
 
 ### 4.2 Required Columns
 
 The following columns must be present (column headers are case-insensitive and common synonyms are accepted automatically — see §4.3):
 
-| Canonical name | Type | Description |
-|---|---|---|
-| `Plasmid_Variant_Index` | number | Unique identifier for the variant (matches your lab's numbering) |
-| `Generation` | integer | Directed-evolution generation (0 = wild-type controls) |
-| `Assembled_DNA_Sequence` | string | Full-length nucleotide sequence of the assembled plasmid variant |
-| `DNA_Yield` | number | Measured DNA yield (any consistent unit, e.g. fg) |
-| `Protein_Yield` | number | Measured protein yield (any consistent unit, e.g. pg) |
-| `Is_Control` | boolean | `TRUE`/`FALSE` or `1`/`0` — marks generation-0 WT controls |
+| Canonical name           | Type    | Description                                                      |
+| ------------------------ | ------- | ---------------------------------------------------------------- |
+| `Plasmid_Variant_Index`  | number  | Unique identifier for the variant (matches your lab's numbering) |
+| `Generation`             | integer | Directed-evolution generation (0 = wild-type controls)           |
+| `Assembled_DNA_Sequence` | string  | Full-length nucleotide sequence of the assembled plasmid variant |
+| `DNA_Yield`              | number  | Measured DNA yield (any consistent unit, e.g. fg)                |
+| `Protein_Yield`          | number  | Measured protein yield (any consistent unit, e.g. pg)            |
+| `Is_Control`             | boolean | `TRUE`/`FALSE` or `1`/`0` — marks generation-0 WT controls       |
 
 ### 4.3 Optional Columns and Accepted Synonyms
 
@@ -82,12 +82,12 @@ The following columns must be present (column headers are case-insensitive and c
 
 The portal automatically recognises common column-name variations, for example:
 
-| Canonical | Also accepted |
-|---|---|
-| `Plasmid_Variant_Index` | `variant_index`, `plasmid_id`, `variant_id`, `index` |
-| `Generation` | `directed_evolution_generation`, `gen` |
-| `DNA_Yield` | `dna_quantification_fg`, `dna_qty_fg`, `dna_concentration_fg` |
-| `Is_Control` | `control`, `control_sample` |
+| Canonical               | Also accepted                                                 |
+| ----------------------- | ------------------------------------------------------------- |
+| `Plasmid_Variant_Index` | `variant_index`, `plasmid_id`, `variant_id`, `index`          |
+| `Generation`            | `directed_evolution_generation`, `gen`                        |
+| `DNA_Yield`             | `dna_quantification_fg`, `dna_qty_fg`, `dna_concentration_fg` |
+| `Is_Control`            | `control`, `control_sample`                                   |
 
 **Extra columns** (any columns not in the list above) are accepted without error and stored as JSON metadata on each variant row. They will not affect QC or analysis.
 
@@ -142,18 +142,18 @@ $$
 
 Where:
 
-- **DNA Baseline** — the *median* DNA yield of all `Is_Control = TRUE` rows in the same generation.
-- **Protein Baseline** — the *median* protein yield of all `Is_Control = TRUE` rows in the same generation.
+- **DNA Baseline** — the _median_ DNA yield of all `Is_Control = TRUE` rows in the same generation.
+- **Protein Baseline** — the _median_ protein yield of all `Is_Control = TRUE` rows in the same generation.
 
 The numerator is the **fold-change in DNA yield** relative to controls; the denominator is the **fold-change in protein expression** relative to controls. Dividing one by the other corrects for differences in how much protein the variant produces, leaving a score that reflects catalytic activity specifically.
 
 ### 6.2 Why This Formula?
 
-| Score value | Interpretation |
-|---|---|
-| > 1 | Variant produces more DNA per unit protein than control → more active |
-| ≈ 1 | Similar activity to the WT control |
-| < 1 | Less active than WT control |
+| Score value | Interpretation                                                        |
+| ----------- | --------------------------------------------------------------------- |
+| > 1         | Variant produces more DNA per unit protein than control → more active |
+| ≈ 1         | Similar activity to the WT control                                    |
+| < 1         | Less active than WT control                                           |
 
 Using fold-changes rather than raw differences makes the metric **dimensionless** and **comparable across generations** (even if absolute yield levels drift between rounds).
 
@@ -240,7 +240,7 @@ The embedding is computed from binary mutation vectors (each dimension = presenc
 Currently, the portal does not provide a one-click bulk export. The following workarounds are available:
 
 - **Raw variant data**: The Variants tab on the experiment detail page shows the first 50 variants sorted by activity score. For larger exports, query the Neon database directly.
-- **Plots**: Right-click any Plotly chart → *Download plot as PNG*. The violin plot image can be right-clicked and saved directly.
+- **Plots**: Right-click any Plotly chart → _Download plot as PNG_. The violin plot image can be right-clicked and saved directly.
 - **FASTA**: On the New Experiment page, after looking up a protein, a **Download FASTA** link downloads the WT protein sequence as a `.fasta` file.
 
 ---
@@ -286,7 +286,7 @@ This is expected when variant yields are close to control yields. It indicates t
 
 ```tsv
 Plasmid_Variant_Index	Generation	Assembled_DNA_Sequence	DNA_Yield	Protein_Yield	Is_Control	Parent_Plasmid_Variant
-0	0	ATGAAAGCAAT...	120.5	85.2	TRUE	
+0	0	ATGAAAGCAAT...	120.5	85.2	TRUE
 1	1	ATGAAAGCAAT...	198.3	76.1	FALSE	0
 2	1	ATGAAAGCGAT...	145.2	80.4	FALSE	0
 ```
@@ -319,15 +319,15 @@ Plasmid_Variant_Index	Generation	Assembled_DNA_Sequence	DNA_Yield	Protein_Yield	
 
 ## 12. Glossary
 
-| Term | Definition |
-|---|---|
-| **Activity score** | Normalised fold-change metric measuring catalytic efficiency relative to generation-matched controls (see §6) |
-| **Control** | A variant with `Is_Control = TRUE`; represents the unmodified WT construct in a given generation and is used as baseline for activity score normalisation |
-| **Generation** | One round of directed-evolution mutagenesis and selection; 0 = starting WT |
-| **ORF** | Open reading frame — the contiguous stretch of codons between a start and stop codon that encodes the protein |
-| **Non-synonymous mutation** | A codon change that alters the amino-acid sequence of the protein |
-| **Synonymous mutation** | A codon change that does not alter the amino-acid sequence (silent mutation) |
-| **Rotation offset** | The circular shift in nucleotide position between how the WT plasmid and a variant plasmid were assembled; corrected automatically during sequence analysis |
-| **Needleman-Wunsch** | A global sequence alignment algorithm used to assign alignment-aware positions to mutations when indels are present |
-| **PCA / t-SNE / UMAP** | Dimensionality reduction methods used to embed high-dimensional mutation vectors into 2-D for the activity landscape plot |
-| **UniProt accession** | A unique identifier for a protein in the UniProt database (e.g. `O34996`) |
+| Term                        | Definition                                                                                                                                                  |
+| --------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Activity score**          | Normalised fold-change metric measuring catalytic efficiency relative to generation-matched controls (see §6)                                               |
+| **Control**                 | A variant with `Is_Control = TRUE`; represents the unmodified WT construct in a given generation and is used as baseline for activity score normalisation   |
+| **Generation**              | One round of directed-evolution mutagenesis and selection; 0 = starting WT                                                                                  |
+| **ORF**                     | Open reading frame — the contiguous stretch of codons between a start and stop codon that encodes the protein                                               |
+| **Non-synonymous mutation** | A codon change that alters the amino-acid sequence of the protein                                                                                           |
+| **Synonymous mutation**     | A codon change that does not alter the amino-acid sequence (silent mutation)                                                                                |
+| **Rotation offset**         | The circular shift in nucleotide position between how the WT plasmid and a variant plasmid were assembled; corrected automatically during sequence analysis |
+| **Needleman-Wunsch**        | A global sequence alignment algorithm used to assign alignment-aware positions to mutations when indels are present                                         |
+| **PCA / t-SNE / UMAP**      | Dimensionality reduction methods used to embed high-dimensional mutation vectors into 2-D for the activity landscape plot                                   |
+| **UniProt accession**       | A unique identifier for a protein in the UniProt database (e.g. `O34996`)                                                                                   |
