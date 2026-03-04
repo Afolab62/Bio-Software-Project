@@ -18,7 +18,14 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Loader2, Dna, AlertCircle, Download, BarChart2, Box } from "lucide-react";
+import {
+  Loader2,
+  Dna,
+  AlertCircle,
+  Download,
+  BarChart2,
+  Box,
+} from "lucide-react";
 import type { VariantData } from "@/lib/types";
 
 const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
@@ -48,7 +55,7 @@ function PlotlyIframe({
   label: string;
 }) {
   const [loaded, setLoaded] = useState(false);
-  const [error, setError]   = useState(false);
+  const [error, setError] = useState(false);
 
   // Reset state whenever the URL changes (new variant selected)
   useEffect(() => {
@@ -65,7 +72,9 @@ function PlotlyIframe({
           style={{ zIndex: 1 }}
         >
           <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-          <span className="text-muted-foreground text-sm">Loading {label}…</span>
+          <span className="text-muted-foreground text-sm">
+            Loading {label}…
+          </span>
         </div>
       )}
       {error && (
@@ -99,7 +108,7 @@ export function MutationFingerprint({
   selectedVariantIndex,
   onSelectVariant,
 }: MutationFingerprintProps) {
-  const [activeTab, setActiveTab]         = useState<"linear" | "3d">("linear");
+  const [activeTab, setActiveTab] = useState<"linear" | "3d">("linear");
   const [fp3dRequested, setFp3dRequested] = useState(false);
 
   // Reset 3D-requested flag and tab when variant changes
@@ -109,7 +118,8 @@ export function MutationFingerprint({
   }, [selectedVariantIndex]);
 
   const selectedVariant =
-    variants.find((v) => v.plasmidVariantIndex === selectedVariantIndex) ?? null;
+    variants.find((v) => v.plasmidVariantIndex === selectedVariantIndex) ??
+    null;
 
   // Iframe URLs — backend returns self-contained Plotly HTML for ?format=html
   const linearHtmlUrl = selectedVariant
@@ -131,9 +141,11 @@ export function MutationFingerprint({
     null;
 
   const synonymousCount =
-    selectedVariant?.mutations?.filter((m) => m.type === "synonymous").length ?? null;
+    selectedVariant?.mutations?.filter((m) => m.type === "synonymous").length ??
+    null;
   const nonSynonymousCount =
-    selectedVariant?.mutations?.filter((m) => m.type === "non-synonymous").length ?? null;
+    selectedVariant?.mutations?.filter((m) => m.type === "non-synonymous")
+      .length ?? null;
 
   // ── Render ───────────────────────────────────────────────────────────────
   return (
@@ -145,14 +157,16 @@ export function MutationFingerprint({
         </CardTitle>
         <CardDescription>
           Linear view shows mutations along the sequence backbone by generation.
-          3D view maps them onto the AlphaFold structure (pLDDT-coloured backbone).
+          3D view maps them onto the AlphaFold structure (pLDDT-coloured
+          backbone).
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
-
         {/* Variant selector */}
         <div>
-          <label className="text-sm font-medium mb-2 block">Select Variant</label>
+          <label className="text-sm font-medium mb-2 block">
+            Select Variant
+          </label>
           <Select
             value={selectedVariantIndex?.toString() ?? ""}
             onValueChange={(v) => onSelectVariant(parseFloat(v))}
@@ -163,8 +177,8 @@ export function MutationFingerprint({
             <SelectContent>
               {variants.map((v, idx) => (
                 <SelectItem key={v.id} value={v.plasmidVariantIndex.toString()}>
-                  #{idx + 1} — Variant {v.plasmidVariantIndex} | Gen {v.generation} | Activity{" "}
-                  {(v.activityScore ?? 0).toFixed(3)}
+                  #{idx + 1} — Variant {v.plasmidVariantIndex} | Gen{" "}
+                  {v.generation} | Activity {(v.activityScore ?? 0).toFixed(3)}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -198,13 +212,23 @@ export function MutationFingerprint({
                 </Badge>
               )}
               {nonSynonymousCount !== null && (
-                <Badge variant="outline">{nonSynonymousCount} non-synonymous</Badge>
+                <Badge variant="outline">
+                  {nonSynonymousCount} non-synonymous
+                </Badge>
               )}
               {synonymousCount !== null && (
                 <Badge variant="outline">{synonymousCount} synonymous</Badge>
               )}
-              <Button size="sm" variant="outline" className="ml-auto gap-1.5" asChild>
-                <a href={`${BACKEND}/api/experiments/${experimentId}/mutations/export`} download>
+              <Button
+                size="sm"
+                variant="outline"
+                className="ml-auto gap-1.5"
+                asChild
+              >
+                <a
+                  href={`${BACKEND}/api/experiments/${experimentId}/mutations/export`}
+                  download
+                >
                   <Download className="h-3.5 w-3.5" />
                   Export CSV
                 </a>

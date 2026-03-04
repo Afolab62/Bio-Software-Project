@@ -323,7 +323,7 @@ function AnalysisContent() {
             </Card>
           </div>
 
-          {/* Visualizations */}
+          {/* Visualisations */}
           <Tabs value={activeTab} onValueChange={setActiveTab}>
             <TabsList>
               <TabsTrigger value="overview">Overview</TabsTrigger>

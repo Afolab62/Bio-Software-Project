@@ -39,13 +39,13 @@ export function ActivityLandscape({
   experimentId,
 }: ActivityLandscapeProps) {
   const [response, setResponse] = useState<LandscapeResponse | null>(null);
-  const [loading, setLoading]   = useState(false);
-  const [error, setError]       = useState<string | null>(null);
-  const [method, setMethod]     = useState<Method>("pca");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [method, setMethod] = useState<Method>("pca");
 
   // Track Plotly's internal figure state so slider drags, play/stop presses,
   // and legend clicks are not clobbered by React re-renders.
-  const [figData,   setFigData]   = useState<Plotly.Data[]>([]);
+  const [figData, setFigData] = useState<Plotly.Data[]>([]);
   const [figLayout, setFigLayout] = useState<Partial<Plotly.Layout>>({});
   const [figFrames, setFigFrames] = useState<Plotly.Frame[]>([]);
 
@@ -67,7 +67,8 @@ export function ActivityLandscape({
         { credentials: "include" },
       );
       const json: LandscapeResponse = await res.json();
-      if (!json.success) throw new Error(json.error ?? "Failed to load landscape");
+      if (!json.success)
+        throw new Error(json.error ?? "Failed to load landscape");
       setResponse(json);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Unknown error");
@@ -91,14 +92,18 @@ export function ActivityLandscape({
       <Card>
         <CardContent className="py-12 text-center">
           <Mountain className="h-12 w-12 mx-auto text-muted-foreground/50 mb-3" />
-          <p className="text-muted-foreground">No data available for landscape visualization</p>
+          <p className="text-muted-foreground">
+            No data available for landscape visualization
+          </p>
         </CardContent>
       </Card>
     );
   }
 
   const analysedCount = variants.filter(
-    (v) => v.proteinSequence || (v.mutationCount !== undefined && v.mutationCount > 0),
+    (v) =>
+      v.proteinSequence ||
+      (v.mutationCount !== undefined && v.mutationCount > 0),
   ).length;
 
   if (analysedCount < 3) {
@@ -106,9 +111,12 @@ export function ActivityLandscape({
       <Card>
         <CardContent className="py-12 text-center">
           <AlertCircle className="h-12 w-12 mx-auto text-muted-foreground/50 mb-3" />
-          <p className="text-muted-foreground font-medium">Sequence analysis required</p>
+          <p className="text-muted-foreground font-medium">
+            Sequence analysis required
+          </p>
           <p className="text-sm text-muted-foreground mt-1">
-            {analysedCount} of {variants.length} variants have been analysed. Run sequence analysis first.
+            {analysedCount} of {variants.length} variants have been analysed.
+            Run sequence analysis first.
           </p>
         </CardContent>
       </Card>
@@ -142,7 +150,12 @@ export function ActivityLandscape({
               </Button>
             ))}
             {response && (
-              <Button size="sm" variant="ghost" onClick={() => fetchLandscape(method)} disabled={loading}>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => fetchLandscape(method)}
+                disabled={loading}
+              >
                 <RefreshCw className="h-4 w-4" />
               </Button>
             )}
@@ -161,16 +174,25 @@ export function ActivityLandscape({
         {error && !loading && (
           <div className="flex flex-col items-center justify-center h-40 gap-3">
             <AlertCircle className="h-8 w-8 text-destructive" />
-            <p className="text-sm text-destructive text-center max-w-md">{error}</p>
-            <Button size="sm" variant="outline" onClick={() => fetchLandscape(method)}>Retry</Button>
+            <p className="text-sm text-destructive text-center max-w-md">
+              {error}
+            </p>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => fetchLandscape(method)}
+            >
+              Retry
+            </Button>
           </div>
         )}
 
         {response && !loading && (
           <>
             <p className="text-xs text-muted-foreground mb-2">
-              {response.variant_count} variants · {response.method.toUpperCase()} projection ·
-              use ▶ buttons or slider below to animate generations
+              {response.variant_count} variants ·{" "}
+              {response.method.toUpperCase()} projection · use ▶ buttons or
+              slider below to animate generations
             </p>
             <Plot
               data={figData}
@@ -193,7 +215,9 @@ export function ActivityLandscape({
 
         {!response && !loading && !error && (
           <div className="flex items-center justify-center h-40">
-            <p className="text-muted-foreground text-sm">Click a method above to compute the landscape</p>
+            <p className="text-muted-foreground text-sm">
+              Click a method above to compute the landscape
+            </p>
           </div>
         )}
       </CardContent>
