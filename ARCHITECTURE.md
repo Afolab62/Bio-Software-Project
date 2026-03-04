@@ -1,8 +1,12 @@
 # Software Architecture — Directed Evolution Portal
 
+> **Developer reference.** For end-user guidance see [HELP_GUIDE.md](HELP_GUIDE.md).
+
+---
+
 ## 1. System Overview
 
-The Directed Evolution Portal is a three-tier web application:
+The Directed Evolution Portal is a three-tier web application.
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
@@ -10,10 +14,11 @@ The Directed Evolution Portal is a three-tier web application:
 │   Next.js 14 · TypeScript · Tailwind CSS · react-plotly.js         │
 └───────────────────────────────┬─────────────────────────────────────┘
                                 │  HTTP / JSON  (credentials: include)
-                                │  PNG blobs for server-side plots
+                                │  PNG blobs  (violin plot)
+                                │  HTML blobs (fingerprint iframe)
 ┌───────────────────────────────▼─────────────────────────────────────┐
 │                       Flask API Server                              │
-│   Python 3.13 · SQLAlchemy · Flask-Session · matplotlib            │
+│   Python 3.13 · SQLAlchemy · Flask-Session · matplotlib · Plotly   │
 │   Runs on http://localhost:8000                                     │
 └───────────────────────────────┬─────────────────────────────────────┘
                                 │  psycopg3  (TLS)
@@ -50,20 +55,18 @@ Directed-Evolution-Portal/
 │   │   ├── experimental_data_parser.py  CSV/TSV upload → VariantData rows
 │   │   ├── activity_calculator.py  Activity score normalisation
 │   │   ├── plasmid_validation.py   ORF detection, codon-to-protein translation
-│   │   ├── sequence_analyzer.py    Needleman-Wunsch alignment, mutation detection
+│   │   ├── sequence_analyzer.py    Needleman-Wunsch alignment, mutation detection (stateless)
 │   │   ├── sequence_tools.py       Codon tables, AA helpers
-│   │   ├── fingerprint_plot.py     3-D structure fingerprint (Biopython + PDB)
+│   │   ├── fingerprint_plot.py     3-D residue heatmap (Biopython + PDB) → HTML blob
 │   │   ├── landscape_service.py    UMAP / PCA embedding (lazy torch/ESM imports)
 │   │   ├── uniprot_client.py       UniProt feature fetch with disk cache
-│   │   ├── staging.py              Temporary staging of parsed data before commit
 │   │   └── errors.py               Typed error classes
 │   └── requirements.txt
 │
 ├── frontend/                       Next.js application (App Router)
 │   ├── app/
-│   │   ├── layout.tsx              Root layout — ThemeProvider, font
+│   │   ├── layout.tsx              Root layout — font, global CSS
 │   │   ├── page.tsx                Landing / auth gate
-│   │   ├── api/auth/               (Next.js route handler — unused, auth via Flask)
 │   │   └── dashboard/
 │   │       ├── layout.tsx          Dashboard shell with sidebar nav
 │   │       ├── page.tsx            Dashboard home
@@ -73,12 +76,11 @@ Directed-Evolution-Portal/
 │   │           └── page.tsx        Analysis dashboard (tabs)
 │   ├── components/
 │   │   ├── analysis/
-│   │   │   ├── activity-distribution-chart.tsx  Violin plot (server-rendered PNG)
+│   │   │   ├── activity-distribution-chart.tsx  Violin plot (PNG, max-h-[500px])
 │   │   │   ├── top-performers-table.tsx          Top 10 variants table
-│   │   │   ├── mutation-fingerprint.tsx           3-D residue heatmap (Plotly)
+│   │   │   ├── mutation-fingerprint.tsx           3-D residue heatmap (Plotly iframe)
 │   │   │   └── activity-landscape.tsx             UMAP/PCA scatter (Plotly)
 │   │   ├── dashboard-nav.tsx       Sidebar navigation
-│   │   ├── theme-provider.tsx      next-themes wrapper
 │   │   └── ui/                     shadcn/ui primitives
 │   ├── hooks/                      Custom React hooks (useUser, etc.)
 │   ├── lib/
@@ -88,7 +90,8 @@ Directed-Evolution-Portal/
 │   └── public/
 │
 ├── package.json                    Root — `npm run dev` starts both servers concurrently
-└── ARCHITECTURE.md                 This file
+├── ARCHITECTURE.md                 This file
+└── HELP_GUIDE.md                   End-user manual
 ```
 
 ---
@@ -171,32 +174,48 @@ Triggered by `POST /api/experiments/<id>/analyze-sequences`:
 
 ```
 1.  Load plasmid_sequence + wt_protein_sequence from DB
-2.  For each variant in experiment:
-    a. plasmid_validation  →  extract ORF, translate to protein
+2.  On WT plasmid: locate_gene_fast() → (wt_gene_dna, gene_start, gene_length, is_gene_rc)
+      Returns 4-tuple.  If gene is on the reverse-complement strand, is_gene_rc=True and
+      start coordinate maps back via  (2*L - dna_end) % L  (not dna_start % L).
+3.  For each variant in experiment:
+    a. locate_gene_fast() / locate_gene_sw() fallback
+          Extract gene window; RC-flip if is_gene_rc; translate → variant protein.
     b. sequence_analyzer._estimate_rotation_offset()
-          anchored vote over 5-AA windows to correct circular-plasmid rotation
+          Anchored vote over 5-AA windows to correct circular-plasmid rotation.
     c. sequence_analyzer._needleman_wunsch()
-          global alignment (match=1, mismatch=-1, gap=-2)
+          Global alignment (match=1, mismatch=-1, gap=-2).
     d. sequence_analyzer.identify_mutations()
-          diff aligned sequences → list of {position, aligned_position,
-          wt_aa, mut_aa, wt_codon, mut_codon, mutation_type, aa_change}
-3.  Compute-first, write-second atomic transaction:
+          Diff aligned sequences → list of {position, aligned_position,
+          wt_aa, mut_aa, wt_codon, mut_codon, mutation_type, aa_change}.
+    NOTE: SequenceAnalyzer is stateless — no instance attributes; all state is
+          local to analyze_variant_batch() to prevent cross-request race conditions.
+4.  Compute-first, write-second atomic transaction:
     DELETE FROM mutations WHERE experiment_id = <id>
     INSERT  all new Mutation rows
     COMMIT
-4.  Update experiment.analysis_status = 'completed'
-5.  db.remove()  — release scoped session for this thread
+5.  Update experiment.analysis_status = 'completed'
+6.  db.remove()  — release scoped session for this thread
 ```
 
-### 4.3 Plot generation (server-side matplotlib)
+### 4.3 Plot generation (server-side)
 
-`GET /api/experiments/<id>/plots/activity-distribution` runs the original
-`activity_score_per_gen.py` matplotlib code in the Flask process (Agg backend,
-no display) and streams the result as a PNG blob:
+**Violin plot** — `GET /api/experiments/<id>/plots/activity-distribution`
 
 ```
 DB query → pandas DataFrame → matplotlib violin + whisker drawing
+  figsize=(11,6), dpi=140, tight_layout
 → BytesIO buffer → send_file(buf, mimetype='image/png')
+Frontend: fetch() → blob URL → <img max-h-[500px] object-contain>
+```
+
+**Mutation fingerprint** — `GET /api/experiments/<id>/plots/mutation-fingerprint?format=html`
+
+```
+DB query → residue × generation score matrix
+→ Plotly 3-D surface figure → fig.to_html(full_html=True, include_plotlyjs='cdn')
+→ send_file(buf, mimetype='text/html')
+Frontend: <iframe key={url} src={backendUrl?format=html}>
+  (CDN Plotly loads inside iframe — avoids Next.js bundle conflict)
 ```
 
 ---
@@ -214,24 +233,30 @@ DB query → pandas DataFrame → matplotlib violin + whisker drawing
 /dashboard/analysis        Analysis dashboard
 ```
 
-### 5.2 Data flow (Analysis dashboard)
+### 5.2 Data flow (Experiment detail page)
 
 ```
-page.tsx (server component shell)
+dashboard/experiments/[id]/page.tsx
   │
-  ├─ useEffect: GET /api/experiments?userId=...
-  │    └─ setExperiments([])
+  ├─ loadExperiment()  — GET /api/experiments/<id>?include_variants=false
+  │    Fast metadata-only fetch: clears full-page spinner immediately.
+  │    Sets experiment name, status, analysis_status.
   │
-  ├─ useEffect: GET /api/experiments/<id>
-  │    └─ setVariants([])   ← VariantData[] with activityScore, generation, etc.
+  ├─ loadVariants()    — GET /api/experiments/<id>  (full, with variants)
+  │    Slower fetch running in parallel; populates variant-dependent UI.
   │
-  ├─ useEffect: GET /api/experiments/<id>/top-performers?include_mutations=true
-  │    └─ setTopPerformers([])
+  ├─ Global banners (rendered ABOVE <Tabs>, visible from any tab)
+  │    Blue  — while analysisStatus === "analyzing" (shows elapsed seconds)
+  │    Green — on analysis completion (dismissible, set via analysisBanner state)
+  │
+  ├─ Polling loop (5-second interval while analyzing)
+  │    GET /api/experiments/<id>/analysis-status
+  │    On "completed" → sets analysisBanner → calls loadVariants()
   │
   └─ Tabs
        ├─ overview     → <ActivityDistributionChart>  (fetches PNG from backend)
        │                 <TopPerformersTable>
-       ├─ mutations    → <MutationFingerprint>        (Plotly 3-D heatmap)
+       ├─ mutations    → <MutationFingerprint>        (Plotly iframe)
        └─ landscape    → <ActivityLandscape>          (Plotly scatter, UMAP/PCA)
 ```
 
@@ -261,16 +286,24 @@ const ActivityDistributionChart = dynamic(
 
 ## 7. Key Design Decisions
 
-| Decision                                          | Rationale                                                                                                                  |
-| ------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
-| Flask over FastAPI                                | Team familiarity; SQLAlchemy integration simpler                                                                           |
-| Scoped session (`db.remove()` in finally)         | Required when SQLAlchemy scoped_session is used in background daemon threads — prevents session leaks                      |
-| Compute-first, write-second for mutation analysis | Prevents DB leaving mutations table empty if Flask hot-reloader restarts the server mid-analysis                           |
-| Server-side matplotlib PNG for violin plot        | Faithful replication of `activity_score_per_gen.py` without re-implementing KDE in JS                                      |
-| Lazy imports in `landscape_service.py`            | `torch`, `esm`, `umap` are optional heavy dependencies; service degrades gracefully to one-hot encoding if unavailable     |
-| Needleman-Wunsch alignment in sequence_analyzer   | WT and variant sequences can differ in length due to indels; simple positional diff would mis-call all downstream residues |
-| Rotation offset estimation                        | Plasmid sequences are circular; PCR can amplify a differently-rotated read, shifting every position by a fixed offset      |
-| `dynamic()` imports on analysis page              | Reduces initial Next.js compile from ~20 s to ~3 s by splitting Plotly out of the main bundle                              |
+| Decision                                              | Rationale                                                                                                                              |
+| ----------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| Flask over FastAPI                                    | Team familiarity; SQLAlchemy integration simpler                                                                                       |
+| Scoped session (`db.remove()` in finally)             | Required when SQLAlchemy scoped_session is used in background daemon threads — prevents session leaks                                  |
+| Compute-first, write-second for mutation analysis     | Prevents DB being left with an empty mutations table if the server restarts mid-analysis                                               |
+| Server-side matplotlib PNG for violin plot            | Faithful replication of the original `activity_score_per_gen.py` without re-implementing KDE in JS                                    |
+| Fingerprint plot streamed as full HTML (iframe)       | CDN Plotly loads freely inside `<iframe>`; avoids the bundle-version conflict that crashes `react-plotly.js` in Next.js App Router     |
+| RC strand coordinate fix: `(2*L - dna_end) % L`      | `dna_start % L` is meaningless for reverse-complement coordinates; correct formula maps the RC endpoint back to plus-strand space      |
+| Stateless `SequenceAnalyzer`                          | Removed `__init__` and all instance attributes so concurrent analyses cannot overwrite each other's gene state                         |
+| Split `loadExperiment()` / `loadVariants()`           | Metadata-only fetch returns in ~200 ms, clearing the full-page spinner; variant data loads lazily without blocking navigation          |
+| Global analysis banners above `<Tabs>`                | Banners placed outside the tab panel are visible regardless of which tab is active, so "analysis complete" is never hidden             |
+| `extra_metadata` JSONB column on `variant_data`       | Preserves arbitrary extra columns from the upload TSV without schema changes                                                           |
+| Positional fallback restricted to required fields     | Prevents the first non-required extra column from being silently consumed as `parent_plasmid_variant` during column mapping            |
+| NaN/Inf sanitisation before JSONB serialise           | `numpy.nan` is not JSON-serialisable; sanitise loop converts to `None` to prevent 500 errors on metadata storage                      |
+| Lazy imports in `landscape_service.py`                | `torch`, `esm`, `umap` are optional heavy dependencies; service degrades gracefully to one-hot encoding if unavailable                 |
+| Needleman-Wunsch alignment in `sequence_analyzer`     | WT and variant sequences can differ in length due to indels; simple positional diff would mis-call all downstream residues             |
+| Rotation offset estimation                            | Plasmid sequences are circular; PCR can amplify a differently-rotated read, shifting every position by a fixed offset                  |
+| `dynamic()` imports on analysis page                  | Reduces initial Next.js compile from ~20 s to ~3 s by splitting Plotly out of the main bundle                                         |
 
 ---
 
