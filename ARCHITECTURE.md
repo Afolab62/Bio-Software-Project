@@ -286,24 +286,24 @@ const ActivityDistributionChart = dynamic(
 
 ## 7. Key Design Decisions
 
-| Decision                                              | Rationale                                                                                                                              |
-| ----------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| Flask over FastAPI                                    | Team familiarity; SQLAlchemy integration simpler                                                                                       |
-| Scoped session (`db.remove()` in finally)             | Required when SQLAlchemy scoped_session is used in background daemon threads — prevents session leaks                                  |
-| Compute-first, write-second for mutation analysis     | Prevents DB being left with an empty mutations table if the server restarts mid-analysis                                               |
-| Server-side matplotlib PNG for violin plot            | Faithful replication of the original `activity_score_per_gen.py` without re-implementing KDE in JS                                    |
-| Fingerprint plot streamed as full HTML (iframe)       | CDN Plotly loads freely inside `<iframe>`; avoids the bundle-version conflict that crashes `react-plotly.js` in Next.js App Router     |
-| RC strand coordinate fix: `(2*L - dna_end) % L`      | `dna_start % L` is meaningless for reverse-complement coordinates; correct formula maps the RC endpoint back to plus-strand space      |
-| Stateless `SequenceAnalyzer`                          | Removed `__init__` and all instance attributes so concurrent analyses cannot overwrite each other's gene state                         |
-| Split `loadExperiment()` / `loadVariants()`           | Metadata-only fetch returns in ~200 ms, clearing the full-page spinner; variant data loads lazily without blocking navigation          |
-| Global analysis banners above `<Tabs>`                | Banners placed outside the tab panel are visible regardless of which tab is active, so "analysis complete" is never hidden             |
-| `extra_metadata` JSONB column on `variant_data`       | Preserves arbitrary extra columns from the upload TSV without schema changes                                                           |
-| Positional fallback restricted to required fields     | Prevents the first non-required extra column from being silently consumed as `parent_plasmid_variant` during column mapping            |
-| NaN/Inf sanitisation before JSONB serialise           | `numpy.nan` is not JSON-serialisable; sanitise loop converts to `None` to prevent 500 errors on metadata storage                      |
-| Lazy imports in `landscape_service.py`                | `torch`, `esm`, `umap` are optional heavy dependencies; service degrades gracefully to one-hot encoding if unavailable                 |
-| Needleman-Wunsch alignment in `sequence_analyzer`     | WT and variant sequences can differ in length due to indels; simple positional diff would mis-call all downstream residues             |
-| Rotation offset estimation                            | Plasmid sequences are circular; PCR can amplify a differently-rotated read, shifting every position by a fixed offset                  |
-| `dynamic()` imports on analysis page                  | Reduces initial Next.js compile from ~20 s to ~3 s by splitting Plotly out of the main bundle                                         |
+| Decision                                          | Rationale                                                                                                                          |
+| ------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| Flask over FastAPI                                | Team familiarity; SQLAlchemy integration simpler                                                                                   |
+| Scoped session (`db.remove()` in finally)         | Required when SQLAlchemy scoped_session is used in background daemon threads — prevents session leaks                              |
+| Compute-first, write-second for mutation analysis | Prevents DB being left with an empty mutations table if the server restarts mid-analysis                                           |
+| Server-side matplotlib PNG for violin plot        | Faithful replication of the original `activity_score_per_gen.py` without re-implementing KDE in JS                                 |
+| Fingerprint plot streamed as full HTML (iframe)   | CDN Plotly loads freely inside `<iframe>`; avoids the bundle-version conflict that crashes `react-plotly.js` in Next.js App Router |
+| RC strand coordinate fix: `(2*L - dna_end) % L`   | `dna_start % L` is meaningless for reverse-complement coordinates; correct formula maps the RC endpoint back to plus-strand space  |
+| Stateless `SequenceAnalyzer`                      | Removed `__init__` and all instance attributes so concurrent analyses cannot overwrite each other's gene state                     |
+| Split `loadExperiment()` / `loadVariants()`       | Metadata-only fetch returns in ~200 ms, clearing the full-page spinner; variant data loads lazily without blocking navigation      |
+| Global analysis banners above `<Tabs>`            | Banners placed outside the tab panel are visible regardless of which tab is active, so "analysis complete" is never hidden         |
+| `extra_metadata` JSONB column on `variant_data`   | Preserves arbitrary extra columns from the upload TSV without schema changes                                                       |
+| Positional fallback restricted to required fields | Prevents the first non-required extra column from being silently consumed as `parent_plasmid_variant` during column mapping        |
+| NaN/Inf sanitisation before JSONB serialise       | `numpy.nan` is not JSON-serialisable; sanitise loop converts to `None` to prevent 500 errors on metadata storage                   |
+| Lazy imports in `landscape_service.py`            | `torch`, `esm`, `umap` are optional heavy dependencies; service degrades gracefully to one-hot encoding if unavailable             |
+| Needleman-Wunsch alignment in `sequence_analyzer` | WT and variant sequences can differ in length due to indels; simple positional diff would mis-call all downstream residues         |
+| Rotation offset estimation                        | Plasmid sequences are circular; PCR can amplify a differently-rotated read, shifting every position by a fixed offset              |
+| `dynamic()` imports on analysis page              | Reduces initial Next.js compile from ~20 s to ~3 s by splitting Plotly out of the main bundle                                      |
 
 ---
 
