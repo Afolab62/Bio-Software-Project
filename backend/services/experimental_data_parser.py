@@ -176,6 +176,17 @@ class ExperimentalDataParser:
         """
         df = self._parse(file_content, file_format)
 
+        # ── 5_change Detect duplicate rows across all columns ─────────────
+        duplicates = df[df.duplicated(keep=False)]
+        if not duplicates.empty:
+            print("\nDuplicate rows detected:")
+            for idx in duplicates.index:
+                print(f"Row {idx + 1} is duplicated")
+            raise ValueError(
+                "Duplicate rows detected in input file. "
+                "Remove duplicates before ingestion."
+            )
+
         # ── Column mapping ────────────────────────────────────────────────
         if column_mapping_override:
             column_mapping = {k: v for k, v in column_mapping_override.items()
