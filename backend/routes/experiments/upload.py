@@ -128,15 +128,17 @@ def upload_experimental_data(experiment_id: str):
             print(f"Parsed: {parse_summary['valid_rows']} valid, "
                   f"{parse_summary['control_rows']} controls, "
                   f"{parse_summary['rejected_rows']} rejected")
+
+            combined_check = pd.concat([valid_df, control_df], ignore_index=True) if not control_df.empty else valid_df
+            if combined_check.empty:
+                raise ValueError(
+                    "Uploaded file contains no data rows. "
+                    "Provide at least one experimental record."
+                )
+
         except ValueError as e:
             print(f"Parse error: {e}")
             return jsonify({'success': False, 'error': str(e)}), 400
-
-        if valid_df.empty and control_df.empty:
-            return jsonify({
-                'success': False,
-                'error': 'No data rows could be parsed from the file.'
-            }), 400
 
         # Step 2: Calculate activity scores
         print("Step 2: Calculating activity scores...")
