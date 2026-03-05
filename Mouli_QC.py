@@ -31,7 +31,7 @@ class Sample(Base):
     protein_quantification_pg = Column(Float, nullable=False)
     is_control = Column(Boolean, nullable=False)
 
-    extra_data = relationship("SampleMetadata", back_populates="sample", cascade="all, delete-orphan")
+    sample.extra_data = relationship("SampleMetadata", back_populates="sample", cascade="all, delete-orphan") #5_change
 
 
 class SampleMetadata(Base):
@@ -242,6 +242,22 @@ class FileLoader:
 
 # %%
 def coerce_types(df, essential_fields):
+
+# 5_change Detect duplicate rows across all columns
+duplicates = df[df.duplicated(keep=False)]
+
+if not duplicates.empty:
+    print("\nDuplicate rows detected:")
+
+    for idx in duplicates.index:
+        print(f"Row {idx+1} is duplicated")
+
+    raise ValueError(
+        "Duplicate rows detected in input file. "
+        "Remove duplicates before ingestion."
+    )
+
+    
     df = df.copy()
     for col, dtype in essential_fields.items():
         if col not in df.columns:
@@ -328,6 +344,12 @@ file_path = "c://Users//Leora//OneDrive - Queen Mary, University of London//Grou
 loader = FileLoader()
 df = loader.load(file_path)
 
+if df.empty: #5_change
+    raise ValueError(
+        "Uploaded file contains no data rows. "
+        "Provide at least one experimental record."
+    )
+
 mapper = ColumnMapper(essential_fields, col_synonyms)
 column_mapping = mapper.generate_mapping(df.columns)
 df = df.rename(columns=column_mapping)
@@ -373,6 +395,7 @@ input("\n QC complete. Press Enter to continue.")
 
 
 insert_sql(df_valid)
+
 
 
 
