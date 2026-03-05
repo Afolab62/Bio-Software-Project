@@ -20,16 +20,18 @@ Built as an MSc Bioinformatics Group Project (2026).
 
 ## Features
 
-- **Experiment management** — create experiments linked to a UniProt protein accession and a plasmid sequence
-- **Plasmid validation** — automatic ORF detection and codon-to-protein translation with detailed QC flags
-- **Data upload** — parse CSV/TSV files of variant activity scores; normalise and store per-generation
-- **Sequence analysis** — Needleman-Wunsch global alignment with circular-plasmid rotation correction to detect synonymous and non-synonymous mutations at every variant position
+- **Experiment management** — create experiments linked to a UniProt protein accession and a plasmid FASTA sequence, with automatic FASTA validation and invalid-character checks
+- **Plasmid validation** — 6-frame ORF detection with exact, fuzzy-window, and Smith–Waterman fallback matching; failure messages now include the best fuzzy near-miss frame, identity score, and first mismatching amino-acid position
+- **Data upload** — parse TSV/JSON files of variant activity scores; column synonym mapping with optional manual override; duplicate-row detection blocks ingestion before any processing; normalise and store per-generation
+- **Column mapping preview** — `/preview-mapping` endpoint returns the auto-detected header mapping before committing data, allowing the user to confirm or correct it
+- **Sequence analysis** — Needleman–Wunsch global alignment with circular-plasmid rotation correction to detect synonymous and non-synonymous mutations at every variant position
 - **Analysis dashboard** with four visualisation tabs:
   - _Overview_ — matplotlib violin plot of activity score distribution per generation (server-rendered) + summary stats table
   - _Top Performers_ — ranked table of the 10 highest-activity variants with their mutation lists
-  - _Mutation Fingerprint_ — Plotly 3-D residue heatmap showing mutation frequency across the protein structure
+  - _Mutation Fingerprint_ — Plotly 3-D residue heatmap showing mutation frequency across the protein structure (PDB or linear fallback)
   - _Activity Landscape_ — UMAP/PCA embedding of variant sequences coloured by activity score
-- **UniProt integration** — automatic fetch and caching of protein features (domains, active sites, etc.)
+- **Mutation export** — download all detected mutations for an experiment as a TSV file
+- **UniProt integration** — automatic fetch and caching of protein features (domains, active sites, etc.) and raw FASTA sequence
 - **Authentication** — bcrypt-hashed user accounts with server-side Flask-Session cookies
 
 ---
@@ -148,18 +150,29 @@ Directed-Evolution-Portal/
 │   │   ├── user.py             User account
 │   │   └── experiment.py       Experiment, VariantData, Mutation
 │   ├── routes/
-│   │   ├── auth.py             POST /api/auth/register|login|logout, GET /api/auth/me
-│   │   ├── experiments.py      Full experiment + analysis + plot API
-│   │   ├── uniprot.py          GET /api/uniprot/<accession>
-│   │   └── landscape.py        POST /api/landscape
+│   │   ├── auth.py             POST /api/auth/register|login|logout, GET /api/auth/session
+│   │   ├── experiments/        Experiment routes (Blueprint package)
+│   │   │   ├── core.py         CRUD: POST|GET /api/experiments, GET|PATCH|DELETE /<id>
+│   │   │   ├── upload.py       POST /<id>/preview-mapping, POST /<id>/upload-data
+│   │   │   ├── variants.py     GET /<id>/variants, GET /<id>/top-performers
+│   │   │   ├── analysis.py     POST /<id>/analyze-sequences
+│   │   │   ├── fingerprint.py  GET /<id>/fingerprint/<vid>, fingerprint3d, fingerprint_linear
+│   │   │   └── export.py       GET /<id>/mutations/export, GET /<id>/plots/activity-distribution
+│   │   ├── uniprot.py          GET /api/uniprot/<accession>, GET /api/uniprot/<accession>/fasta
+│   │   └── landscape.py        GET /api/experiments/<id>/landscape
 │   ├── services/
+│   │   ├── experiment_service.py   High-level experiment CRUD and orchestration
+│   │   ├── user_service.py         User creation and lookup
 │   │   ├── sequence_analyzer.py    NW alignment, rotation offset, mutation detection
-│   │   ├── plasmid_validation.py   ORF detection, translation, QC
+│   │   ├── sequence_tools.py       Low-level sequence utilities
+│   │   ├── plasmid_validation.py   ORF detection, 6-frame translation, fuzzy/SW fallback QC
 │   │   ├── activity_calculator.py  Score normalisation
-│   │   ├── experimental_data_parser.py  CSV/TSV → VariantData
+│   │   ├── experimental_data_parser.py  TSV/JSON → VariantData (duplicate-row guard)
 │   │   ├── fingerprint_plot.py     PDB structure + mutation frequency heatmap
 │   │   ├── landscape_service.py    UMAP / PCA embedding
-│   │   └── uniprot_client.py       UniProt REST client with disk cache
+│   │   ├── uniprot_client.py       UniProt REST client with disk cache
+│   │   ├── errors.py               Shared application error types
+│   │   └── staging.py              Staging/preview helpers
 │   ├── config.py
 │   ├── database.py
 │   ├── run.py
@@ -178,6 +191,7 @@ Directed-Evolution-Portal/
 │   │   │   ├── top-performers-table.tsx
 │   │   │   ├── mutation-fingerprint.tsx
 │   │   │   └── activity-landscape.tsx
+│   │   ├── dashboard-nav.tsx            Sidebar navigation
 │   │   └── ui/                         shadcn/ui primitives
 │   ├── hooks/
 │   ├── lib/types.ts                    Shared TypeScript types
@@ -192,23 +206,30 @@ Directed-Evolution-Portal/
 
 ## API Overview
 
-| Method | Path                                                | Description                             |
-| ------ | --------------------------------------------------- | --------------------------------------- |
-| POST   | `/api/auth/register`                                | Create account                          |
-| POST   | `/api/auth/login`                                   | Log in (sets session cookie)            |
-| POST   | `/api/auth/logout`                                  | Destroy session                         |
-| GET    | `/api/auth/me`                                      | Current user                            |
-| GET    | `/api/experiments`                                  | List experiments for logged-in user     |
-| POST   | `/api/experiments`                                  | Create experiment (accession + plasmid) |
-| GET    | `/api/experiments/<id>`                             | Experiment detail + variants            |
-| PATCH  | `/api/experiments/<id>`                             | Update name / metadata                  |
-| DELETE | `/api/experiments/<id>`                             | Delete experiment and all variants      |
-| POST   | `/api/experiments/<id>/upload-data`                 | Upload CSV/TSV of variant data          |
-| POST   | `/api/experiments/<id>/analyze-sequences`           | Start background mutation analysis      |
-| GET    | `/api/experiments/<id>/top-performers`              | Top N variants by activity score        |
-| GET    | `/api/experiments/<id>/plots/activity-distribution` | PNG violin plot (matplotlib)            |
-| GET    | `/api/uniprot/<accession>`                          | Fetch + cache UniProt protein features  |
-| POST   | `/api/landscape`                                    | Compute UMAP/PCA embedding              |
+| Method | Path                                                          | Description                                           |
+| ------ | ------------------------------------------------------------- | ----------------------------------------------------- |
+| POST   | `/api/auth/register`                                          | Create account                                        |
+| POST   | `/api/auth/login`                                             | Log in (sets session cookie)                          |
+| POST   | `/api/auth/logout`                                            | Destroy session                                       |
+| GET    | `/api/auth/session`                                           | Current user                                          |
+| GET    | `/api/experiments`                                            | List experiments for logged-in user                   |
+| POST   | `/api/experiments`                                            | Create experiment (accession + plasmid FASTA)         |
+| GET    | `/api/experiments/<id>`                                       | Experiment detail + variants                          |
+| PATCH  | `/api/experiments/<id>`                                       | Update name / metadata                                |
+| DELETE | `/api/experiments/<id>`                                       | Delete experiment and all variants                    |
+| GET    | `/api/experiments/<id>/variants`                              | Paginated variant list                                |
+| GET    | `/api/experiments/<id>/top-performers`                        | Top N variants by activity score                      |
+| POST   | `/api/experiments/<id>/preview-mapping`                       | Preview auto-detected column mapping before upload    |
+| POST   | `/api/experiments/<id>/upload-data`                           | Upload TSV/JSON of variant data (duplicate-row guard) |
+| POST   | `/api/experiments/<id>/analyze-sequences`                     | Run mutation analysis (NW alignment)                  |
+| GET    | `/api/experiments/<id>/mutations/export`                      | Download mutations as TSV                             |
+| GET    | `/api/experiments/<id>/plots/activity-distribution`           | PNG violin plot (matplotlib)                          |
+| GET    | `/api/experiments/<id>/fingerprint/<variant_id>`              | Mutation fingerprint data                             |
+| GET    | `/api/experiments/<id>/fingerprint3d/<variant_id>`            | 3-D residue heatmap (PDB-mapped)                      |
+| GET    | `/api/experiments/<id>/fingerprint_linear/<variant_id>`       | Linear (no-PDB) mutation heatmap fallback             |
+| GET    | `/api/experiments/<id>/landscape`                             | UMAP/PCA embedding for the experiment                 |
+| GET    | `/api/uniprot/<accession>`                                    | Fetch + cache UniProt protein features                |
+| GET    | `/api/uniprot/<accession>/fasta`                              | Fetch raw FASTA sequence from UniProt                 |
 
 All endpoints require a valid session cookie except `/api/auth/register` and `/api/auth/login`.
 

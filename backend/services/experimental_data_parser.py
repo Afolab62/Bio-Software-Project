@@ -116,7 +116,7 @@ def _validate_row(row: Dict[str, Any]) -> List[str]:
         errors.append("is_control must be boolean (TRUE/FALSE/1/0)")
 
     seq = row.get("assembled_dna_sequence")
-    if isinstance(seq, str) and seq and not set(seq.upper()).issubset(set("ATCG")):
+    if isinstance(seq, str) and seq and not set(seq.upper()).issubset(set("ATCGNRYZ")):
         errors.append("DNA sequence contains invalid characters (only A/T/C/G allowed)")
 
     return errors

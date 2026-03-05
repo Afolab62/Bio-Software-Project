@@ -220,6 +220,18 @@ def _best_fuzzy_identity(hay: str, needle: str) -> Tuple[float, int]:
     return best_id, best_i
 
 
+def _first_mismatch_info(window: str, needle: str) -> str:
+    """
+    Return a human-readable description of the first substitution mismatch
+    between *window* (plasmid-translated slice) and *needle* (WT sequence).
+    Skips positions where either character is 'X' (ambiguous codon).
+    """
+    for i, (a, b) in enumerate(zip(window, needle)):
+        if a != b and a != "X" and b != "X":
+            return f"AA pos {i + 1} (WT: {b}, found: {a})"
+    return "no single-residue substitution mismatch (possible indel or length difference)"
+
+
 # ----------------------------
 # Smith–Waterman local alignment
 # ----------------------------
@@ -499,6 +511,7 @@ def find_wt_in_plasmid(
     # ----------------------------
     # B) Fuzzy window identity (substitutions only)
     # ----------------------------
+    near_miss_fuzzy: Optional[dict] = None  # best candidate that didn't reach min_identity
     if best is None and fuzzy_fallback:
         fuzzy_best: Optional[_Candidate] = None
         # Large-plasmid fast-path: the O(L×M) sliding-window scan is
@@ -556,6 +569,14 @@ def find_wt_in_plasmid(
                     )
                     if (fuzzy_best is None) or (cand.identity > fuzzy_best.identity) or (cand.identity == fuzzy_best.identity and cand.score > fuzzy_best.score):
                         fuzzy_best = cand
+                elif best_i != -1 and (near_miss_fuzzy is None or best_id > near_miss_fuzzy["identity"]):
+                    # Below threshold but best seen so far — keep for diagnostics
+                    near_miss_fuzzy = {
+                        "frame": k,
+                        "identity": best_id,
+                        "aa_start": best_i,
+                        "window": aa_seq[best_i: best_i + len(wt)],
+                    }
 
             # keep only a few diagnostic summaries
             base_diag["top_fuzzy_candidates"] = sorted(
@@ -669,7 +690,13 @@ def find_wt_in_plasmid(
             notes=(
                 f"No exact match found. "
                 f"Fuzzy fallback did not reach threshold (min_identity={min_identity:.2f}). "
-                f"No alignment match met thresholds (identity>={align_min_identity:.2f}, coverage>={align_min_coverage:.2f})."
+                + (
+                    f"Best fuzzy attempt: frame {near_miss_fuzzy['frame']}, "
+                    f"identity={near_miss_fuzzy['identity']:.3f}, "
+                    f"first mismatch at {_first_mismatch_info(near_miss_fuzzy['window'], wt)}. "
+                    if near_miss_fuzzy else ""
+                )
+                + f"No alignment match met thresholds (identity>={align_min_identity:.2f}, coverage>={align_min_coverage:.2f})."
             ),
             diagnostics=base_diag,
         )
