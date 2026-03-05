@@ -1,6 +1,18 @@
+// Analysis Dashboard Page
+// This page displays data visualization and analysis for directed evolution experiments
+// Location: app/dashboard/analysis/page.tsx
+
+"use client"; // Run this component in the browser (needed for useState, useEffect, etc.)
+
+// ============================================================================
+// IMPORTS
+// ============================================================================
+
 "use client";
+// React hooks for managing state and side effects
 
 import { useEffect, useState, Suspense } from "react";
+// Next.js hooks for URL parameters and dynamic imports
 import { useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
 import { useAuth } from "@/lib/auth-context";
