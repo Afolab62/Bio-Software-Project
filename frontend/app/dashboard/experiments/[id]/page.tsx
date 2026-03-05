@@ -34,7 +34,6 @@ import {
   Dna,
   AlertTriangle,
   X,
-  RefreshCw,
 } from "lucide-react";
 
 import type { Experiment, VariantData } from "@/lib/types";
@@ -68,6 +67,8 @@ export default function ExperimentDetailPage() {
   // Elapsed-seconds counter shown while analysis is running
   const [elapsedSecs, setElapsedSecs] = useState(0);
   const analysisStartRef = useRef<number | null>(null);
+  // Holds the setInterval handle for auto-polling while analysis runs
+  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploadResult, setUploadResult] = useState<{
     parsed: number;
@@ -113,19 +114,34 @@ export default function ExperimentDetailPage() {
     return () => clearInterval(tick);
   }, [experiment?.analysisStatus]);
 
-  // Manually check whether analysis has finished — called from the banner button
-  const [isCheckingStatus, setIsCheckingStatus] = useState(false);
-  const checkAnalysisStatus = async () => {
-    setIsCheckingStatus(true);
-    try {
-      const res = await fetch(
-        `${process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000"}/api/experiments/${id}?include_variants=false`,
-        { credentials: "include" },
-      );
-      const data = await res.json();
-      if (data.success) {
+  // Auto-poll backend every 5 s while analysis is running.
+  // Stops itself as soon as status becomes "completed" or "failed".
+  useEffect(() => {
+    // If not running, clear any stale interval and bail
+    if (experiment?.analysisStatus !== "analyzing") {
+      if (pollingRef.current !== null) {
+        clearInterval(pollingRef.current);
+        pollingRef.current = null;
+      }
+      return;
+    }
+
+    const poll = async () => {
+      try {
+        const res = await fetch(
+          `${process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000"}/api/experiments/${id}?include_variants=false`,
+          { credentials: "include" },
+        );
+        const data = await res.json();
+        if (!data.success) return;
+
         setExperiment(data.experiment);
+
         if (data.experiment.analysisStatus === "completed") {
+          if (pollingRef.current !== null) {
+            clearInterval(pollingRef.current);
+            pollingRef.current = null;
+          }
           setIsAnalyzing(false);
           setJustCompleted(true);
           setTimeout(() => setJustCompleted(false), 10000);
@@ -142,25 +158,31 @@ export default function ExperimentDetailPage() {
               "Sequences analysed successfully",
           });
         } else if (data.experiment.analysisStatus === "failed") {
+          if (pollingRef.current !== null) {
+            clearInterval(pollingRef.current);
+            pollingRef.current = null;
+          }
           setIsAnalyzing(false);
           toast({
             title: "Analysis Failed",
             description: data.experiment.analysisMessage || "An error occurred",
             variant: "destructive",
           });
-        } else {
-          toast({
-            title: "Still running",
-            description: "Analysis is still in progress — check again shortly.",
-          });
         }
+      } catch {
+        // network blip — keep polling
       }
-    } catch {
-      toast({ title: "Could not reach server", variant: "destructive" });
-    } finally {
-      setIsCheckingStatus(false);
-    }
-  };
+    };
+
+    pollingRef.current = setInterval(poll, 5000);
+    return () => {
+      if (pollingRef.current !== null) {
+        clearInterval(pollingRef.current);
+        pollingRef.current = null;
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [experiment?.analysisStatus]);
 
   // Fast: metadata only — gates the initial page display
   const loadExperiment = async () => {
@@ -435,30 +457,38 @@ export default function ExperimentDetailPage() {
 
       {/* Global analysis status banners — always visible regardless of active tab */}
       {experiment.analysisStatus === "analyzing" && (
-        <div className="flex items-center gap-3 p-3 rounded-lg bg-blue-50 border border-blue-200 text-blue-800 dark:bg-blue-950 dark:border-blue-800 dark:text-blue-300">
-          <Loader2 className="h-4 w-4 animate-spin shrink-0 text-blue-600 dark:text-blue-400" />
-          <p className="text-sm flex-1">
-            Sequence analysis in progress
-            {elapsedSecs > 0 && (
-              <span className="ml-1 font-mono text-xs">
-                ({elapsedSecs}s elapsed)
+        elapsedSecs >= 900 ? (
+          /* ── Slow-run warning: shown after 15 minutes ─────────────────── */
+          <div className="flex items-start gap-3 p-3 rounded-lg bg-yellow-50 border border-yellow-300 text-yellow-800 dark:bg-yellow-950 dark:border-yellow-700 dark:text-yellow-300">
+            <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5 text-yellow-600 dark:text-yellow-400" />
+            <p className="text-sm flex-1">
+              Analysis has been running for{" "}
+              <span className="font-mono font-semibold">
+                {Math.floor(elapsedSecs / 60)}m {elapsedSecs % 60}s
               </span>
-            )}
-            {" — this may take a few minutes for large datasets."}
-          </p>
-          <button
-            onClick={checkAnalysisStatus}
-            disabled={isCheckingStatus}
-            className="shrink-0 flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-md bg-blue-100 hover:bg-blue-200 disabled:opacity-50 text-blue-800 dark:bg-blue-900 dark:hover:bg-blue-800 dark:text-blue-200 transition-colors"
-          >
-            {isCheckingStatus ? (
-              <Loader2 className="h-3 w-3 animate-spin" />
-            ) : (
-              <RefreshCw className="h-3 w-3" />
-            )}
-            Check status
-          </button>
-        </div>
+              {" — large datasets can take 20+ minutes. Still checking every 5 s. If the server restarted, try Re-analyse."}
+            </p>
+          </div>
+        ) : (
+          /* ── Normal in-progress banner ────────────────────────────────── */
+          <div className="flex items-center gap-3 p-3 rounded-lg bg-blue-50 border border-blue-200 text-blue-800 dark:bg-blue-950 dark:border-blue-800 dark:text-blue-300">
+            <Loader2 className="h-4 w-4 animate-spin shrink-0 text-blue-600 dark:text-blue-400" />
+            <p className="text-sm flex-1">
+              Sequence analysis in progress
+              {elapsedSecs > 0 && (
+                <span className="ml-1 font-mono text-xs">
+                  {elapsedSecs < 60
+                    ? `(${elapsedSecs}s elapsed)`
+                    : `(${Math.floor(elapsedSecs / 60)}m ${elapsedSecs % 60}s elapsed)`}
+                </span>
+              )}
+              {" — this may take a few minutes for large datasets."}
+            </p>
+            <span className="shrink-0 text-xs text-blue-600 dark:text-blue-400 font-mono">
+              auto-checking…
+            </span>
+          </div>
+        )
       )}
       {analysisBanner && (
         <div className="flex items-start gap-3 p-4 rounded-lg bg-green-50 border border-green-200 text-green-800 dark:bg-green-950 dark:border-green-800 dark:text-green-300">

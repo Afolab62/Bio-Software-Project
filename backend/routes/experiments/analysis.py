@@ -3,8 +3,22 @@ Sequence analysis routes and background worker.
 
 Routes registered here:
   POST  /api/experiments/<experiment_id>/analyze-sequences
+
+Background-thread pattern
+--------------------------
+Sequence analysis can take minutes for large datasets (hundreds of variants,
+each requiring Needleman-Wunsch alignment against the WT reference).  Running
+this synchronously inside a Flask request would block the worker thread and
+risk a gateway timeout.
+
+Instead, ``analyze_sequences`` returns an HTTP 200 *immediately* and spawns a
+``daemon=True`` Python thread to do the real work.  The thread writes progress
+to the ``analysis_status`` / ``analysis_message`` columns of the ``Experiment``
+row so the frontend can poll ``GET /api/experiments/<id>`` to check status.
+
 """
 import threading
+import time
 
 from flask import request, jsonify, current_app
 
@@ -35,10 +49,14 @@ def _set_analysis_status(exp_id, status: str, message: str):
 def _run_analysis_background(app, exp_id, wt_protein_seq: str, plasmid_seq: str):
     """
     Run sequence analysis in a background thread.
-    Uses an explicit app context so the DB session works correctly.
-    The HTTP response has already been returned before this executes.
+
+    The ``app`` parameter is the concrete Flask application object (not the
+    proxy).  Wrapping everything in ``with app.app_context()`` gives this
+    thread a valid application context so SQLAlchemy's scoped session works.
+    The HTTP response has already been sent to the client before this executes.
     """
     with app.app_context():
+        _start = time.time()
         try:
             print(f"[BG] Starting sequence analysis for {exp_id}...")
 
@@ -78,6 +96,11 @@ def _run_analysis_background(app, exp_id, wt_protein_seq: str, plasmid_seq: str)
             variant_ids  = [v.id for v in variants]
 
             # ── Derive generation_introduced via lineage walk ─────────────────
+            # For each variant we need to know *when* each mutation first
+            # appeared in the evolutionary lineage.  We process variants in
+            # ascending generation order and inherit the parent's mutation→gen
+            # mapping; any mutation not found in the parent is "new" at the
+            # current generation.
             # { plasmid_variant_index -> { (pos, wt, mut): generation } }
             idx_to_mutations: dict = {}
 
@@ -128,6 +151,10 @@ def _run_analysis_background(app, exp_id, wt_protein_seq: str, plasmid_seq: str)
                   f"{len(protein_updates)} variants — writing to DB...")
 
             # ── Atomic replace: delete old → insert new ────────────────────────
+            # Re-running analysis should produce fresh results, so we delete
+            # all existing Mutation rows for these variants first.  Doing the
+            # deletes and inserts together in one transaction means the DB is
+            # never in a half-written state if the process is interrupted.
             updated_count = 0
             if variant_ids:
                 deleted = db.query(Mutation).filter(
@@ -152,16 +179,23 @@ def _run_analysis_background(app, exp_id, wt_protein_seq: str, plasmid_seq: str)
             db.commit()
             print(f"[BG] Database update complete: "
                   f"{updated_count} variants, {len(new_mutations)} mutations")
+            elapsed = time.time() - _start
+            mins, secs = divmod(int(elapsed), 60)
+            time_str = f"{mins}m {secs}s" if mins else f"{secs}s"
             _set_analysis_status(
                 exp_id, 'completed',
-                f'Successfully analyzed {updated_count} variants'
+                f'Successfully analysed {updated_count} variants in {time_str}'
             )
 
         except Exception as e:
             import traceback
             traceback.print_exc()
             db.rollback()
-            _set_analysis_status(exp_id, 'failed', f'Analysis failed: {str(e)}')
+            elapsed = time.time() - _start
+            _set_analysis_status(
+                exp_id, 'failed',
+                f'Analysis failed after {int(elapsed)}s: {str(e)}'
+            )
         finally:
             # Release the scoped session for this thread back to the pool.
             db.remove()
@@ -193,15 +227,20 @@ def analyze_sequences(experiment_id: str):
         wt_protein_seq = experiment.wt_protein_sequence
         plasmid_seq    = experiment.plasmid_sequence
 
-        # Update status synchronously before spawning thread
+        # Update status synchronously before spawning thread so that a
+        # concurrent poll sees "analyzing" immediately.
         experiment.analysis_status  = 'analyzing'
         experiment.analysis_message = 'Analysis queued...'
         db.commit()
 
+        # current_app is a thread-local proxy; _get_current_object() unwraps
+        # it to the real app so we can pass it safely into the daemon thread.
         app = current_app._get_current_object()
         thread = threading.Thread(
             target=_run_analysis_background,
             args=(app, exp_id, wt_protein_seq, plasmid_seq),
+            # daemon=True means this thread will not prevent the process from
+            # exiting if the server shuts down mid-analysis.
             daemon=True,
         )
         thread.start()

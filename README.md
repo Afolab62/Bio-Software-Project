@@ -250,9 +250,3 @@ All endpoints require a valid session cookie except `/api/auth/register` and `/a
 | Variable                  | Required | Description                                       |
 | ------------------------- | -------- | ------------------------------------------------- |
 | `NEXT_PUBLIC_BACKEND_URL` | ✅       | Flask API base URL (e.g. `http://localhost:8000`) |
-
----
-
-## License
-
-MIT

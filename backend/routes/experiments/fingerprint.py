@@ -28,6 +28,19 @@ def _build_lineage(exp_uuid, var_uuid, extra_cols=None):
     """
     Walk the parent-chain to reconstruct the evolutionary lineage for a variant.
 
+    How the lineage is built
+    -------------------------
+    Each ``VariantData`` row stores a ``parent_plasmid_variant`` index that
+    points to the variant it was derived from in the previous generation.
+    Starting from the requested variant we follow this chain backwards
+    (generation N → N-1 → … → 0) until either no parent is recorded (index
+    is ``None`` or ``-1``) or we detect a cycle (``visited`` set).
+
+    The resulting list is then sorted ascending by generation so that the
+    first element is always the gen-0 ancestor and the last is the selected
+    variant — this means the delta-walk functions below can read the list
+    in order and detect *newly introduced* mutations at each step.
+
     Returns (selected_light, lineage_pvs) where lineage_pvs is a list of
     lightweight row-objects sorted by ascending generation.
 
@@ -91,6 +104,23 @@ def _delta_walk_nonsynonymous(lineage):
     """
     Delta walk that tracks only non-synonymous mutations.
     Returns a list of fingerprint dicts with generationIntroduced.
+
+    Algorithm ("delta walk")
+    -------------------------
+    We iterate through the lineage in chronological order and maintain
+    ``prev_mut_keys`` — the set of non-synonymous mutations that were
+    present in the previous generation.  At each generation step:
+
+    1. Build ``step_mut_keys`` — the set of mutations in this variant.
+    2. ``new_keys = step_mut_keys - prev_mut_keys`` — mutations that are
+       *new* at this generation (i.e. introduced by the current evolution step).
+    3. For each new mutation not already in ``seen_keys`` (deduplication
+       guard for the unlikely case of the same change appearing on different
+       lineage branches), record it with ``generationIntroduced``.
+    4. Advance: ``prev_mut_keys = step_mut_keys``.
+
+    Synonymous mutations (same amino acid, different codon) are intentionally
+    excluded here — they appear in ``_delta_walk_all``.
     """
     fingerprint: list = []
     seen_keys: set = set()

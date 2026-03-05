@@ -1,7 +1,37 @@
 """
 Service for parsing experimental data files (TSV/JSON).
 
-Pipeline (mirrors mouli.py):
+Provenance
+----------
+Derived from ``to_integrate/mouli.py``.
+
+Key changes from the original
+------------------------------
+* **Storage backend** – Original imported ``sqlite3`` and wrote rows into
+  a local SQLite database with integer primary keys.  This version returns
+  plain DataFrames and delegates persistence to the SQLAlchemy/PostgreSQL
+  layer (``VariantData`` model with UUID PKs).
+
+* **File format support** – Original only accepted TSV.  This version also
+  accepts JSON arrays (``format="json"``), enabling richer upstream tools
+  to push structured payloads directly.
+
+* **Column synonym mapping** – ``COLUMN_SYNONYMS`` dict was added so that
+  files exported from different instruments/scripts (which may call the same
+  field ``variant_id``, ``plasmid_id``, etc.) are normalised to canonical
+  names automatically, without requiring the user to rename headers.
+
+* **Extra metadata** – Original had a separate ``SampleMetadata`` table with
+  a fixed schema.  This version captures all non-canonical columns in a single
+  ``extra_metadata`` JSONB column, giving a flexible schema for arbitrary
+  instrument fields without requiring database migrations.
+
+* **QC / rejection tracking** – The ``rejected_df`` output (rows with
+  missing required data) and human-readable ``rejection_reason`` column are
+  new; the original silently dropped bad rows.
+
+Pipeline (unchanged from mouli.py logic)
+-----------------------------------------
   1. Load file into DataFrame
   2. Map columns: synonym lookup then left-to-right positional fallback
   3. Coerce types (bool via explicit map, numeric via pd.to_numeric)

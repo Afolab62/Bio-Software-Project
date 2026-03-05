@@ -280,7 +280,7 @@ function AnalysisContent() {
         </Card>
       ) : (
         <>
-          // Summary stats //
+          {/* Summary stats */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <Card>
               <CardContent className="pt-6">

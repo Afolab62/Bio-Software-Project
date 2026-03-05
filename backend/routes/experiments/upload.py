@@ -55,7 +55,25 @@ def preview_column_mapping(experiment_id: str):
 def upload_experimental_data(experiment_id: str):
     """
     Upload and process experimental data (TSV/JSON) for an experiment.
-    Handles parsing, QC, sequence analysis, and activity score calculation.
+
+    Pipeline (5 stages, all within a single request)
+    --------------------------------------------------
+    1. **Parse** – ``parser.process_file()`` maps columns via synonym lookup
+       or the user-confirmed ``column_mapping`` override from the frontend
+       review step; rows that fail validation become ``rejected_df``.
+    2. **Score** – ``activity_calculator.calculate_activity_scores()`` computes
+       the fold-change ratio for every non-control variant using the median of
+       control wells as the generation baseline.
+    3. **Prepare** – finalize records (sequence analysis is *deferred* until
+       the user explicitly triggers ``/analyze-sequences``).
+    4. **Store** – write ``VariantData`` + ``Mutation`` rows to PostgreSQL in
+       batches of 50 to avoid overly large transactions.
+    5. **Respond** – return parse/QC/generation statistics to the frontend.
+
+    The ``column_mapping`` body field is optional.  When present it carries the
+    user-confirmed {raw column → canonical field} mapping produced by the
+    ``/preview-mapping`` step, which lets users correct auto-detected mappings
+    before data is committed.
     """
     user_id = require_auth()
     if not user_id:

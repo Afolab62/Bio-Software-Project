@@ -35,6 +35,9 @@ def get_experiment_variants(experiment_id: str):
             experiment_id=exp_uuid
         ).order_by(
             VariantData.generation.asc(),
+            # nullslast() is a SQLAlchemy helper that moves rows with a NULL
+            # activity_score (i.e. controls and un-analysed uploads) to the
+            # end of the result set so scored variants always appear first.
             VariantData.activity_score.desc().nullslast()
         ).limit(limit).all()
 

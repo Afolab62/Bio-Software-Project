@@ -1,10 +1,37 @@
 """
-Service for calculating activity scores for experimental variants with corrected edge case handling.
+Service for calculating activity scores for experimental variants.
 
-Activity Score = (DNA yield / DNA baseline) / (Protein yield / Protein baseline)
+Provenance
+----------
+Derived from ``to_integrate/activity_score_v5.py``.
 
-This fold-change ratio approach is more robust than simple subtraction and
-naturally handles edge cases (negative values, division by zero).
+Key changes from the original
+------------------------------
+* **Formula** – The original used a *subtraction* baseline correction
+  (``DNA* = DNA − DNA_control``).  This production version uses a
+  *fold-change ratio*::
+
+      Activity Score = (DNA / DNA_baseline) / (Protein / Protein_baseline)
+
+  The ratio is more robust: it is scale-invariant, handles negative
+  or near-zero values via an epsilon floor, and produces dimensionless
+  scores that are comparable across generations and plates.
+
+* **Baseline statistic** – Original used the mean of control replicates.
+  Production version uses the *median*, which is resistant to outlier
+  control wells that occasionally fail or saturate.
+
+* **Missing-generation handling** – Generations that have no control wells
+  fall back to the overall experiment median baseline (original raised an
+  error in this case).
+
+* **DataFrame API** – Input/output are pandas DataFrames rather than
+  SQLite row objects, so the calculator is storage-agnostic.
+
+Activity Score interpretation
+------------------------------
+High score → more DNA product per unit of protein expression →
+efficient enzyme / high-activity variant.
 """
 
 import pandas as pd

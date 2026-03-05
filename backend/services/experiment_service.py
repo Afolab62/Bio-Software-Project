@@ -3,6 +3,7 @@ from sqlalchemy.exc import IntegrityError
 from models.experiment import Experiment
 from database import get_db
 from services.staging import stage_experiment_validate_plasmid
+from services.uniprot_client import fetch_uniprot_protein_metadata, UniProtError
 
 
 class ExperimentService:
@@ -47,13 +48,41 @@ class ExperimentService:
             else:
                 validation_message = validation_data.get('notes', 'Validation failed')
             
+            # Fetch the protein name from UniProt metadata.
+            # fetch_uniprot_protein_metadata hits the same .json endpoint as
+            # fetch_uniprot_features_json so this uses the disk cache — no
+            # extra HTTP request is made.
+            protein_name: Optional[str] = None
+            try:
+                meta = fetch_uniprot_protein_metadata(protein_accession.strip())
+                protein_name = (
+                    meta.get('proteinDescription', {})
+                        .get('recommendedName', {})
+                        .get('fullName', {})
+                        .get('value')
+                    or meta.get('proteinDescription', {})
+                        .get('submissionNames', [{}])[0]
+                        .get('fullName', {})
+                        .get('value')
+                )
+            except UniProtError:
+                pass  # name stays None; non-fatal
+
+            # Store protein_features as a dict so that Experiment.to_dict()
+            # can retrieve protein_name via protein_features.get('name').
+            # The raw features list (domain annotations) is nested under 'features'.
+            features_payload = {
+                'name': protein_name,
+                'features': validation_result.get('features') or [],
+            }
+
             # Create experiment
             experiment = Experiment(
                 user_id=user_id,
                 name=name,
                 protein_accession=protein_accession.strip(),
                 wt_protein_sequence=validation_result.get('wt_protein', ''),
-                protein_features=validation_result.get('features'),
+                protein_features=features_payload,
                 plasmid_name=plasmid_name or f"Plasmid-{protein_accession}",
                 plasmid_sequence=plasmid_sequence,
                 validation_status=validation_status,

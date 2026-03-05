@@ -4,6 +4,28 @@ Data export and visualisation routes.
 Routes registered here:
   GET  /api/experiments/<experiment_id>/mutations/export
   GET  /api/experiments/<experiment_id>/plots/activity-distribution
+
+Provenance (activity-distribution plot)
+----------------------------------------
+The violin plot endpoint is derived from
+``to_integrate/activity_score_distribution_plot.py``.
+
+Key changes from the original
+------------------------------
+* **Data source** – Original read rows directly from SQLite using
+  ``sqlite3.connect()``.  This version queries the SQLAlchemy ORM
+  (PostgreSQL), so the same rendering code works with the production DB.
+
+* **Output mode** – Original called ``plt.savefig(path)`` to write a PNG
+  file to disk.  This version renders server-side into an in-memory buffer
+  (``io.BytesIO``) and streams the PNG bytes straight to the browser via
+  ``send_file()``, so no temp files are created.
+
+* **Matplotlib backend** – ``matplotlib.use('Agg')`` is set explicitly at
+  import time to force the *non-interactive* Agg renderer.  This is required
+  because Flask workers have no display (no GUI event loop), and importing
+  pyplot before setting the backend would raise a ``cannot connect to X server``
+  error on headless servers.
 """
 import csv as _csv
 import io
@@ -104,7 +126,12 @@ def export_mutations_csv(experiment_id: str):
 def plot_activity_distribution(experiment_id: str):
     """
     Return a PNG of the activity score distribution violin plot.
-    Renders the original matplotlib/seaborn visualisation server-side.
+
+    Produces a per-generation violin plot using matplotlib (server-side rendering).
+    The PNG is streamed directly from memory — no temp files are created.
+
+    Derived from ``to_integrate/activity_score_distribution_plot.py``.
+    See the module docstring for a full list of changes.
     """
     user_id = session.get('user_id')
     if not user_id:
@@ -116,6 +143,9 @@ def plot_activity_distribution(experiment_id: str):
             return jsonify({'success': False, 'error': 'Experiment not found'}), 404
 
         exp_uuid = uuid.UUID(experiment_id) if isinstance(experiment_id, str) else experiment_id
+
+        # Only include QC-passed variants that have a calculated activity score.
+        # Controls are excluded because they do not have an activity_score.
         variants = (
             db.query(VariantData)
             .filter(
@@ -142,7 +172,8 @@ def plot_activity_distribution(experiment_id: str):
 
         gens = sorted(df['Directed_Evolution_Generation'].unique())
 
-        # Filter generations with fewer than 2 data points (violin requires ≥2)
+        # Filter generations with fewer than 2 data points (violin requires ≥2
+        # to draw a shape; a single point would raise a LinAlgError in scipy)
         data = [
             df[df['Directed_Evolution_Generation'] == g]['activity_score'].values.astype(float)
             for g in gens
@@ -165,14 +196,19 @@ def plot_activity_distribution(experiment_id: str):
 
         violins = ax.violinplot(data, widths=0.75, points=200)
 
+        # Style each violin body (the KDE-smoothed shape):
+        # blue fill + edge, slightly transparent
         for pc in violins['bodies']:
             pc.set_facecolor('#bfdbfe')
             pc.set_edgecolor('#3b82f6')
             pc.set_alpha(0.85)
+        # Hide the default whisker/cap lines produced by violinplot —
+        # we draw our own manual lines below so we can style them precisely
         for part in ('cbars', 'cmins', 'cmaxes'):
             if part in violins:
                 violins[part].set_visible(False)
 
+        # Draw manual whiskers, min/max caps, mean (blue), and median (purple)
         for i, v in enumerate(data, start=1):
             vmin   = np.min(v)
             vmax   = np.max(v)
@@ -201,6 +237,9 @@ def plot_activity_distribution(experiment_id: str):
 
         plt.tight_layout()
 
+        # Render to an in-memory PNG buffer and stream it to the client.
+        # plt.close() is critical here — without it, subsequent requests
+        # would accumulate open figures and leak memory in the Flask process.
         buf = io.BytesIO()
         fig.savefig(buf, format='png', dpi=140, bbox_inches='tight', facecolor='#ffffff')
         plt.close(fig)

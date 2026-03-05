@@ -16,7 +16,7 @@ from routes.experiments import experiments_bp
 from routes.uniprot import uniprot_bp
 from routes.landscape import landscape_bp
 from routes.staging import staging_bp
-from database import init_db
+from database import init_db, db
 
 # Import models to register them with Base before init_db
 from models import User, Experiment, VariantData, Mutation
@@ -41,6 +41,7 @@ def create_app():
     app.register_blueprint(uniprot_bp)
     app.register_blueprint(landscape_bp)
     app.register_blueprint(staging_bp)
+    
     
     # Health check endpoint
     @app.route('/health', methods=['GET'])
