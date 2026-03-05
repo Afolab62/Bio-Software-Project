@@ -1,6 +1,3 @@
-.DS_Store
 node_modules
-flask_session
-uniprot_cache
-__pycache__
-.next
+.env
+.env.local

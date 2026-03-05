@@ -1,0 +1,29 @@
+// Use the system Python interpreter rather than a virtual environment.
+//The backend dependencies must be installed globally or the marker
+
+// must run `pip install -r requirements.txt` before opening this project.
+
+// Points the Python extension to the backend .env file for environment
+// variables (e.g. DATABASE_URL, SECRET_KEY). Must create this
+// file from .env.example before running the project.
+{
+  "python.defaultInterpreterPath": "python",
+  "python.terminal.activateEnvironment": false,
+  "python.envFile": "${workspaceFolder}/backend/.env",
+  "python.analysis.autoSearchPaths": false,
+  "python.analysis.extraPaths": [],
+
+  // Explicitly disables conda. Conda env became difficult to use
+  "python.condaPath": "",
+  "python.interpreter.infoVisibility": "never",
+  "python.experiments.enabled": false,
+  "python.terminal.executeInFileDir": false,
+  "conda.condaPath": "disabled",
+  "python-envs.pythonProjects": [
+    {
+      "path": "",
+      "envManager": "ms-python.python:system",
+      "packageManager": "ms-python.python:pip"
+    }
+  ]
+}
