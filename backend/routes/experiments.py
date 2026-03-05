@@ -239,6 +239,46 @@ def delete_experiment(experiment_id: str):
         return jsonify({'success': False, 'error': 'Server error'}), 500
 
 
+@experiments_bp.route('/<experiment_id>/preview-mapping', methods=['POST'])
+def preview_column_mapping(experiment_id: str):
+    """
+    Preview the auto-detected column mapping for an uploaded file without
+    persisting any data.  Used by the frontend mapping-confirmation step.
+
+    Request JSON body:
+      data    (str) — raw file text
+      format  (str) — "tsv" or "json"
+
+    Response 200:
+      {
+        success: true,
+        raw_columns: [...],
+        column_mapping: {raw: canonical, ...},
+        metadata_columns: [...],
+        missing_required: [...],
+        canonical_fields: [...],
+      }
+    """
+    user_id = require_auth()
+    if not user_id:
+        return jsonify({'success': False, 'error': 'Not authenticated'}), 401
+
+    body = request.get_json(silent=True) or {}
+    file_content: str = body.get('data', '')
+    file_format: str = body.get('format', 'tsv').lower()
+
+    if not file_content:
+        return jsonify({'success': False, 'error': 'No file content provided'}), 400
+
+    try:
+        preview = parser.preview_mapping(file_content, file_format)
+        return jsonify({'success': True, **preview}), 200
+    except ValueError as exc:
+        return jsonify({'success': False, 'error': str(exc)}), 400
+    except Exception:
+        return jsonify({'success': False, 'error': 'Failed to parse file header'}), 500
+
+
 @experiments_bp.route('/<experiment_id>/upload-data', methods=['POST'])
 def upload_experimental_data(experiment_id: str):
     """
@@ -264,6 +304,8 @@ def upload_experimental_data(experiment_id: str):
         data = request.get_json()
         file_content = data.get('data', '')
         file_format = data.get('format', 'tsv').lower()
+        # Optional user-confirmed mapping from the frontend review step
+        column_mapping_override = data.get('column_mapping') or None
         
         if not file_content:
             return jsonify({'success': False, 'error': 'No file content provided'}), 400
@@ -308,7 +350,10 @@ def upload_experimental_data(experiment_id: str):
 
         # Step 1: Parse and validate the data
         try:
-            valid_df, control_df, rejected_df, parse_summary = parser.process_file(file_content, file_format)
+            valid_df, control_df, rejected_df, parse_summary = parser.process_file(
+                file_content, file_format,
+                column_mapping_override=column_mapping_override,
+            )
             print(f"Parsed: {parse_summary['valid_rows']} valid, {parse_summary['control_rows']} controls, {parse_summary['rejected_rows']} rejected")
         except ValueError as e:
             print(f"Parse error: {e}")
@@ -680,9 +725,7 @@ def get_mutation_fingerprint_3d(experiment_id: str, variant_id: str):
                 VariantData.id,
                 VariantData.plasmid_variant_index,
                 VariantData.parent_plasmid_variant,
-                VariantData.generation,
-                VariantData.activity_score,
-                VariantData.protein_sequence,
+      VariantData.protein_sequence,
             )
             .filter(VariantData.experiment_id == exp_uuid)
             .all()
@@ -772,6 +815,7 @@ def get_mutation_fingerprint_3d(experiment_id: str, variant_id: str):
 
         # ── 8. Build Plotly figure ────────────────────────────────────────────
         variant_pvi = selected_light.plasmid_variant_index
+        highlight_position = request.args.get('highlight', type=int)
         fig = build_3d_fingerprint(
             lineage_mutations=mutations,
             backbone=backbone,
@@ -780,6 +824,7 @@ def get_mutation_fingerprint_3d(experiment_id: str, variant_id: str):
             uniprot_id=uniprot_id,
             structure_source=structure_info.get('source', structure_info.get('status', 'Structure')),
             feature_annotations=feature_annotations,
+            highlight_position=highlight_position,
         )
 
         # ?format=html → self-contained interactive HTML (no react-plotly.js needed)
@@ -919,6 +964,36 @@ def get_mutation_fingerprint_linear(experiment_id: str, variant_id: str):
                 'responsive': True,
                 'modeBarButtonsToRemove': ['select2d', 'lasso2d'],
             })
+            # Inject a click handler that fires window.parent.postMessage when
+            # the user clicks a mutation triangle.  The parent React component
+            # listens for this message and auto-switches to the 3D tab with the
+            # selected residue highlighted.  Uses a retry loop so the handler
+            # attaches after Plotly.newPlot() has finished rendering.
+            _click_script = """<script>
+(function () {
+  function attach() {
+    var divs = document.querySelectorAll('.js-plotly-plot');
+    if (!divs.length) { setTimeout(attach, 150); return; }
+    divs.forEach(function (div) {
+      div.on('plotly_click', function (ev) {
+        if (!ev || !ev.points || !ev.points.length) return;
+        var pt = ev.points[0];
+        var pos = pt.x != null ? Math.round(pt.x) : null;
+        var label = pt.hovertext || null;
+        if (pos != null) {
+          window.parent.postMessage(
+            { type: 'dem_mutation_click', position: pos, label: label },
+            '*'
+          );
+        }
+      });
+    });
+  }
+  if (document.readyState === 'complete') { attach(); }
+  else { window.addEventListener('load', attach); }
+})();
+</script>"""
+            html = html.replace('</body>', _click_script + '\n</body>')
             return Response(html, mimetype='text/html')
 
         fig_json = _json.loads(fig.to_json())
@@ -1114,7 +1189,7 @@ def _run_analysis_background(app, exp_id, wt_protein_seq: str, plasmid_seq: str)
 
             print(f"[BG] Built {len(new_mutations)} mutations for {len(protein_updates)} variants — writing to DB...")
 
-            # ── Atomic swap: delete old mutations then insert new ones ─────────
+            # ── Delete old mutations then insert new ones ─────────
             # Both steps are in the same transaction so a crash leaves the DB in
             # a consistent state (either fully old or fully new data).
             updated_count = 0

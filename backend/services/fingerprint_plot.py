@@ -657,6 +657,7 @@ def build_3d_fingerprint(
     uniprot_id: str | None = None,
     structure_source: str = "Structure",
     feature_annotations: list[dict[str, Any]] | None = None,
+    highlight_position: int | None = None,
 ) -> go.Figure:
     """
     Build a structure-first 3D mutation map.
@@ -763,6 +764,31 @@ def build_3d_fingerprint(
                     "Type: %{customdata[4]}<br>"
                     "Generation: %{customdata[5]}<br>"
                     "pLDDT: %{customdata[6]}<extra></extra>"
+                ),
+            ))
+
+    # Highlighted residue — gold sphere drawn on top of everything else.
+    # Added when the user clicks a mutation in the linear fingerprint.
+    if highlight_position is not None:
+        coord = pdb_coords.get(int(highlight_position))
+        if coord:
+            fig.add_trace(go.Scatter3d(
+                x=[coord["x"]], y=[coord["y"]], z=[coord["z"]],
+                mode="markers",
+                name=f"Highlighted — position {highlight_position}",
+                showlegend=True,
+                marker={
+                    "symbol": "circle",
+                    "size": 18,
+                    "color": "#ffd700",   # gold
+                    "opacity": 1.0,
+                    "line": {"color": "#ffffff", "width": 2},
+                },
+                hovertemplate=(
+                    f"<b>Selected residue</b><br>"
+                    f"Position: {highlight_position}<br>"
+                    f"pLDDT: {coord.get('plddt', '?')}"
+                    "<extra></extra>"
                 ),
             ))
 

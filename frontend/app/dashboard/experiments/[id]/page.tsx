@@ -15,6 +15,13 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { toast } from "@/hooks/use-toast";
 import {
   ArrowLeft,
@@ -27,8 +34,21 @@ import {
   Dna,
   AlertTriangle,
   X,
+  RefreshCw,
 } from "lucide-react";
 import type { Experiment, VariantData } from "@/lib/types";
+
+type MappingEntry = { rawCol: string; canonicalField: string };
+
+const FIELD_LABELS: Record<string, string> = {
+  plasmid_variant_index: "Plasmid Variant Index",
+  parent_plasmid_variant: "Parent Plasmid Variant",
+  generation: "Generation",
+  assembled_dna_sequence: "Assembled DNA Sequence",
+  dna_yield: "DNA Yield",
+  protein_yield: "Protein Yield",
+  is_control: "Is Control",
+};
 
 export default function ExperimentDetailPage() {
   const params = useParams();
@@ -47,6 +67,7 @@ export default function ExperimentDetailPage() {
   // Elapsed-seconds counter shown while analysis is running
   const [elapsedSecs, setElapsedSecs] = useState(0);
   const analysisStartRef = useRef<number | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploadResult, setUploadResult] = useState<{
     parsed: number;
     processed: number;
@@ -55,6 +76,14 @@ export default function ExperimentDetailPage() {
     errors: Array<{ row: number; field: string; message: string }>;
     warnings: string[];
   } | null>(null);
+
+  // Column-mapping confirmation state
+  const [isPreviewingMapping, setIsPreviewingMapping] = useState(false);
+  const [showMappingReview, setShowMappingReview] = useState(false);
+  const [pendingContent, setPendingContent] = useState("");
+  const [pendingFormat, setPendingFormat] = useState("tsv");
+  const [mappingEntries, setMappingEntries] = useState<MappingEntry[]>([]);
+  const [canonicalFields, setCanonicalFields] = useState<string[]>([]);
 
   useEffect(() => {
     loadExperiment(); // fast — clears the full-page spinner
@@ -82,58 +111,55 @@ export default function ExperimentDetailPage() {
     return () => clearInterval(tick);
   }, [experiment?.analysisStatus]);
 
-  // Poll every 5 seconds while analysis is running — status only, no variants
-  useEffect(() => {
-    if (experiment?.analysisStatus !== "analyzing") return;
-
-    const interval = setInterval(async () => {
-      try {
-        const res = await fetch(
-          `${process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000"}/api/experiments/${id}?include_variants=false`,
-          { credentials: "include" },
-        );
-        const data = await res.json();
-        if (data.success) {
-          // Only update experiment metadata — variants haven't changed
-          setExperiment(data.experiment);
-          if (data.experiment.analysisStatus !== "analyzing") {
-            clearInterval(interval);
-            setIsAnalyzing(false);
-            if (data.experiment.analysisStatus === "completed") {
-              setJustCompleted(true);
-              // Keep the success state for 10 s before settling on "Re-analyse"
-              setTimeout(() => setJustCompleted(false), 10000);
-              // Show persistent banner
-              setAnalysisBanner({
-                message:
-                  data.experiment.analysisMessage ||
-                  "Sequences analyzed successfully",
-              });
-              // Reload variants now that analysis is done
-              loadVariants();
-              toast({
-                title: "Analysis Complete!",
-                description:
-                  data.experiment.analysisMessage ||
-                  "Sequences analysed successfully",
-              });
-            } else if (data.experiment.analysisStatus === "failed") {
-              toast({
-                title: "Analysis Failed",
-                description:
-                  data.experiment.analysisMessage || "An error occurred",
-                variant: "destructive",
-              });
-            }
-          }
+  // Manually check whether analysis has finished — called from the banner button
+  const [isCheckingStatus, setIsCheckingStatus] = useState(false);
+  const checkAnalysisStatus = async () => {
+    setIsCheckingStatus(true);
+    try {
+      const res = await fetch(
+        `${process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000"}/api/experiments/${id}?include_variants=false`,
+        { credentials: "include" },
+      );
+      const data = await res.json();
+      if (data.success) {
+        setExperiment(data.experiment);
+        if (data.experiment.analysisStatus === "completed") {
+          setIsAnalyzing(false);
+          setJustCompleted(true);
+          setTimeout(() => setJustCompleted(false), 10000);
+          setAnalysisBanner({
+            message:
+              data.experiment.analysisMessage ||
+              "Sequences analysed successfully",
+          });
+          loadVariants();
+          toast({
+            title: "Analysis Complete!",
+            description:
+              data.experiment.analysisMessage ||
+              "Sequences analysed successfully",
+          });
+        } else if (data.experiment.analysisStatus === "failed") {
+          setIsAnalyzing(false);
+          toast({
+            title: "Analysis Failed",
+            description:
+              data.experiment.analysisMessage || "An error occurred",
+            variant: "destructive",
+          });
+        } else {
+          toast({
+            title: "Still running",
+            description: "Analysis is still in progress — check again shortly.",
+          });
         }
-      } catch {
-        // Network error — keep polling
       }
-    }, 5000);
-
-    return () => clearInterval(interval);
-  }, [experiment?.analysisStatus, id]);
+    } catch {
+      toast({ title: "Could not reach server", variant: "destructive" });
+    } finally {
+      setIsCheckingStatus(false);
+    }
+  };
 
   // Fast: metadata only — gates the initial page display
   const loadExperiment = async () => {
@@ -173,24 +199,80 @@ export default function ExperimentDetailPage() {
     }
   };
 
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Step 1: read file + fetch auto-detected mapping from backend
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    setIsUploading(true);
+    setIsPreviewingMapping(true);
     setUploadResult(null);
+    setShowMappingReview(false);
 
     try {
       const content = await file.text();
       const format = file.name.endsWith(".json") ? "json" : "tsv";
 
+      setPendingContent(content);
+      setPendingFormat(format);
+
+      const res = await fetch(
+        `${process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000"}/api/experiments/${id}/preview-mapping`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ data: content, format }),
+        },
+      );
+
+      const result = await res.json();
+
+      if (result.success) {
+        const entries: MappingEntry[] = (result.raw_columns as string[]).map(
+          (raw) => ({
+            rawCol: raw,
+            canonicalField: (result.column_mapping as Record<string, string>)[raw] ?? "",
+          }),
+        );
+        setMappingEntries(entries);
+        setCanonicalFields((result.canonical_fields as string[]) ?? []);
+        setShowMappingReview(true);
+      } else {
+        toast({ title: result.error || "Failed to read file", variant: "destructive" });
+      }
+    } catch (error) {
+      console.error("Preview mapping error:", error);
+      toast({ title: "Failed to read file", variant: "destructive" });
+    } finally {
+      setIsPreviewingMapping(false);
+    }
+  };
+
+  // Step 2: user confirmed the mapping — send the file for full processing
+  const handleConfirmMapping = async () => {
+    if (!pendingContent) return;
+
+    setIsUploading(true);
+    setShowMappingReview(false);
+
+    const columnMapping = Object.fromEntries(
+      mappingEntries
+        .filter((e) => e.canonicalField !== "")
+        .map((e) => [e.rawCol, e.canonicalField]),
+    );
+
+    try {
       const res = await fetch(
         `${process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000"}/api/experiments/${id}/upload-data`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           credentials: "include",
-          body: JSON.stringify({ data: content, format }),
+          body: JSON.stringify({
+            data: pendingContent,
+            format: pendingFormat,
+            column_mapping: columnMapping,
+          }),
         },
       );
 
@@ -205,17 +287,24 @@ export default function ExperimentDetailPage() {
         loadExperiment();
         loadVariants();
       } else {
-        toast({
-          title: result.error || "Failed to parse data",
-          variant: "destructive",
-        });
+        toast({ title: result.error || "Failed to parse data", variant: "destructive" });
       }
     } catch (error) {
       console.error("Upload error:", error);
       toast({ title: "Failed to upload file", variant: "destructive" });
     } finally {
       setIsUploading(false);
+      setPendingContent("");
+      setPendingFormat("tsv");
     }
+  };
+
+  const handleCancelMapping = () => {
+    setShowMappingReview(false);
+    setPendingContent("");
+    setPendingFormat("tsv");
+    setMappingEntries([]);
+    if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
   const handleAnalyzeSequences = async () => {
@@ -321,8 +410,20 @@ export default function ExperimentDetailPage() {
                 ({elapsedSecs}s elapsed)
               </span>
             )}
-            {" — results will appear automatically when done"}
+            {" — this may take a few minutes for large datasets."}
           </p>
+          <button
+            onClick={checkAnalysisStatus}
+            disabled={isCheckingStatus}
+            className="shrink-0 flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-md bg-blue-100 hover:bg-blue-200 disabled:opacity-50 text-blue-800 dark:bg-blue-900 dark:hover:bg-blue-800 dark:text-blue-200 transition-colors"
+          >
+            {isCheckingStatus ? (
+              <Loader2 className="h-3 w-3 animate-spin" />
+            ) : (
+              <RefreshCw className="h-3 w-3" />
+            )}
+            Check status
+          </button>
         </div>
       )}
       {analysisBanner && (
@@ -489,6 +590,16 @@ export default function ExperimentDetailPage() {
         </TabsContent>
 
         <TabsContent value="upload" className="mt-6">
+          {/* Flash-green keyframe for mapping rows */}
+          <style>{`
+            @keyframes mapping-flash {
+              0%   { background-color: transparent; }
+              25%  { background-color: hsl(142 70% 45% / 0.14); }
+              100% { background-color: transparent; }
+            }
+            .mapping-row-flash { animation: mapping-flash 1.1s ease-out forwards; }
+          `}</style>
+
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
@@ -496,36 +607,163 @@ export default function ExperimentDetailPage() {
                 Upload Experimental Data
               </CardTitle>
               <CardDescription>
-                Upload your directed evolution data in TSV or JSON format
+                {showMappingReview
+                  ? "Review and adjust the detected column mapping before uploading."
+                  : "Upload your directed evolution data in TSV or JSON format"}
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
-              <div className="border-2 border-dashed border-border rounded-lg p-8 text-center hover:border-primary/50 transition-colors">
-                <input
-                  type="file"
-                  accept=".tsv,.json,.txt"
-                  onChange={handleFileUpload}
-                  className="hidden"
-                  id="data-upload"
-                  disabled={isUploading}
-                />
-                <label htmlFor="data-upload" className="cursor-pointer">
-                  {isUploading ? (
-                    <Loader2 className="h-8 w-8 mx-auto text-muted-foreground mb-2 animate-spin" />
-                  ) : (
-                    <Upload className="h-8 w-8 mx-auto text-muted-foreground mb-2" />
-                  )}
+              {/* ── File picker (hidden while reviewing) ─────────────────── */}
+              {!showMappingReview && (
+                <div className="border-2 border-dashed border-border rounded-lg p-8 text-center hover:border-primary/50 transition-colors">
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept=".tsv,.json,.txt"
+                    onChange={handleFileChange}
+                    className="hidden"
+                    id="data-upload"
+                    disabled={isUploading || isPreviewingMapping}
+                  />
+                  <label htmlFor="data-upload" className="cursor-pointer">
+                    {isUploading || isPreviewingMapping ? (
+                      <Loader2 className="h-8 w-8 mx-auto text-muted-foreground mb-2 animate-spin" />
+                    ) : (
+                      <Upload className="h-8 w-8 mx-auto text-muted-foreground mb-2" />
+                    )}
+                    <p className="text-sm text-muted-foreground">
+                      {isUploading
+                        ? "Uploading..."
+                        : isPreviewingMapping
+                          ? "Reading file..."
+                          : "Click to upload TSV or JSON file"}
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Required fields: Plasmid_Variant_Index,
+                      Assembled_DNA_Sequence, DNA_Yield, Protein_Yield
+                    </p>
+                  </label>
+                </div>
+              )}
+
+              {/* ── Column mapping review ─────────────────────────────────── */}
+              {showMappingReview && (
+                <div className="space-y-4">
                   <p className="text-sm text-muted-foreground">
-                    {isUploading
-                      ? "Processing..."
-                      : "Click to upload TSV or JSON file"}
+                    The system auto-detected the mapping below. Each row
+                    flashes green to confirm detection. Adjust any dropdown
+                    before confirming.
                   </p>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Required fields: Plasmid_Variant_Index,
-                    Assembled_DNA_Sequence, DNA_Yield, Protein_Yield
-                  </p>
-                </label>
-              </div>
+
+                  <div className="rounded-lg border border-border overflow-hidden">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="bg-muted/50 border-b">
+                          <th className="text-left px-4 py-2.5 font-medium text-muted-foreground w-1/2">
+                            File Column
+                          </th>
+                          <th className="text-left px-4 py-2.5 font-medium text-muted-foreground w-1/2">
+                            Maps To
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {mappingEntries.map((entry, idx) => (
+                          <tr
+                            key={entry.rawCol}
+                            className="mapping-row-flash border-b last:border-0"
+                            style={{ animationDelay: `${idx * 70}ms` }}
+                          >
+                            <td className="px-4 py-2.5 font-mono text-xs text-foreground">
+                              {entry.rawCol}
+                            </td>
+                            <td className="px-4 py-2.5">
+                              <Select
+                                value={entry.canonicalField}
+                                onValueChange={(val) =>
+                                  setMappingEntries((prev) =>
+                                    prev.map((e, i) =>
+                                      i === idx ? { ...e, canonicalField: val } : e,
+                                    ),
+                                  )
+                                }
+                              >
+                                <SelectTrigger className="h-8 text-xs">
+                                  <SelectValue placeholder="— extra metadata —" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="">
+                                    — extra metadata —
+                                  </SelectItem>
+                                  {canonicalFields.map((field) => (
+                                    <SelectItem key={field} value={field}>
+                                      {FIELD_LABELS[field] ?? field}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {/* Warning if required fields are missing */}
+                  {(() => {
+                    const required = [
+                      "plasmid_variant_index",
+                      "generation",
+                      "assembled_dna_sequence",
+                      "dna_yield",
+                      "protein_yield",
+                      "is_control",
+                    ];
+                    const assigned = new Set(
+                      mappingEntries.map((e) => e.canonicalField),
+                    );
+                    const missing = required.filter((f) => !assigned.has(f));
+                    return missing.length > 0 ? (
+                      <div className="rounded-lg border border-yellow-500/30 bg-yellow-500/5 p-3 flex items-start gap-2">
+                        <AlertTriangle className="h-4 w-4 text-yellow-600 mt-0.5 shrink-0" />
+                        <p className="text-sm text-yellow-700 dark:text-yellow-400">
+                          Missing required fields:{" "}
+                          <span className="font-medium">
+                            {missing.map((f) => FIELD_LABELS[f] ?? f).join(", ")}
+                          </span>
+                          . Assign them above or the upload will be blocked.
+                        </p>
+                      </div>
+                    ) : null;
+                  })()}
+
+                  <div className="flex gap-3">
+                    <Button
+                      onClick={handleConfirmMapping}
+                      disabled={isUploading}
+                    >
+                      {isUploading ? (
+                        <>
+                          <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                          Uploading...
+                        </>
+                      ) : (
+                        <>
+                          <CheckCircle2 className="h-4 w-4 mr-2" />
+                          Confirm Mapping &amp; Upload
+                        </>
+                      )}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={handleCancelMapping}
+                      disabled={isUploading}
+                    >
+                      Start Over
+                    </Button>
+                  </div>
+                </div>
+              )}
 
               {uploadResult && (
                 <div className="space-y-4">

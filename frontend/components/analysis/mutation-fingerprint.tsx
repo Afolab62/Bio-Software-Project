@@ -25,6 +25,8 @@ import {
   Download,
   BarChart2,
   Box,
+  Crosshair,
+  X,
 } from "lucide-react";
 import type { VariantData } from "@/lib/types";
 
@@ -111,12 +113,32 @@ export function MutationFingerprint({
 }: MutationFingerprintProps) {
   const [activeTab, setActiveTab] = useState<"linear" | "3d">("linear");
   const [fp3dRequested, setFp3dRequested] = useState(false);
+  const [highlightedPosition, setHighlightedPosition] = useState<number | null>(null);
 
   // Reset when variant changes
   useEffect(() => {
     setFp3dRequested(false);
     setActiveTab("linear");
+    setHighlightedPosition(null);
   }, [selectedVariantIndex]);
+
+  // Listen for clicks forwarded from the linear fingerprint iframe.
+  // When the user clicks a mutation triangle, the iframe fires:
+  //   window.parent.postMessage({ type: 'dem_mutation_click', position: N }, '*')
+  // We catch it here, record the position, and switch to the 3D tab with the
+  // corresponding residue highlighted as a gold sphere.
+  useEffect(() => {
+    const handle = (e: MessageEvent) => {
+      if (!e.data || e.data.type !== "dem_mutation_click") return;
+      const pos = Number(e.data.position);
+      if (!Number.isFinite(pos)) return;
+      setHighlightedPosition(pos);
+      setFp3dRequested(true);
+      setActiveTab("3d");
+    };
+    window.addEventListener("message", handle);
+    return () => window.removeEventListener("message", handle);
+  }, []);
 
   const selectedVariant =
     variants.find((v) => v.plasmidVariantIndex === selectedVariantIndex) ??
@@ -127,7 +149,9 @@ export function MutationFingerprint({
     ? `${BACKEND}/api/experiments/${experimentId}/fingerprint_linear/${selectedVariant.id}?format=html`
     : null;
   const fp3dHtmlUrl = selectedVariant
-    ? `${BACKEND}/api/experiments/${experimentId}/fingerprint3d/${selectedVariant.id}?format=html`
+    ? `${BACKEND}/api/experiments/${experimentId}/fingerprint3d/${selectedVariant.id}?format=html${
+        highlightedPosition != null ? `&highlight=${highlightedPosition}` : ""
+      }`
     : null;
 
   const handleTabChange = (tab: string) => {
@@ -261,20 +285,43 @@ export function MutationFingerprint({
               </TabsContent>
 
               {/* ── 3D Structure tab ── */}
-              <TabsContent value="3d" className="mt-4">
+              <TabsContent value="3d" className="mt-4 space-y-3">
                 {!fp3dRequested ? (
                   <div className="flex flex-col items-center justify-center py-16 gap-3">
                     <Box className="h-10 w-10 text-muted-foreground/40" />
                     <p className="text-sm text-muted-foreground">
-                      Switch to this tab to fetch the 3D structure
+                      Click a mutation triangle in the Linear tab to jump
+                      directly to it in 3D, or switch to this tab to load the
+                      full structure.
                     </p>
                   </div>
                 ) : fp3dHtmlUrl ? (
-                  <PlotlyIframe
-                    url={fp3dHtmlUrl}
-                    height={800}
-                    label="3D structure fingerprint"
-                  />
+                  <>
+                    {/* Highlight indicator — shown when user clicked a triangle in the linear view */}
+                    {highlightedPosition != null ? (
+                      <div className="flex items-center gap-2 px-3 py-2 rounded-md bg-yellow-50 border border-yellow-200 text-yellow-800 dark:bg-yellow-950 dark:border-yellow-800 dark:text-yellow-300">
+                        <Crosshair className="h-4 w-4 shrink-0 text-yellow-600" />
+                        <span className="text-sm flex-1">
+                          Highlighting residue{" "}
+                          <span className="font-mono font-semibold">
+                            {highlightedPosition}
+                          </span>{" "}
+                          — gold sphere in the 3D view
+                        </span>
+                        <button
+                          onClick={() => setHighlightedPosition(null)}
+                          className="shrink-0 text-yellow-600 hover:text-yellow-800 dark:text-yellow-400"
+                        >
+                          <X className="h-4 w-4" />
+                        </button>
+                      </div>
+                    ) : null}
+                    <PlotlyIframe
+                      url={fp3dHtmlUrl}
+                      height={800}
+                      label="3D structure fingerprint"
+                    />
+                  </>
                 ) : null}
               </TabsContent>
             </Tabs>
